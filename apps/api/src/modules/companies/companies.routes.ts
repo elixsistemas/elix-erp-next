@@ -4,8 +4,6 @@ import { requireAuth } from "../../config/prehandlers";
 
 export async function companiesRoutes(app: FastifyInstance) {
   app.get("/companies", { preHandler: requireAuth }, controller.list);
-  app.get("/companies/:id", { preHandler: requireAuth }, controller.get);
-  app.post("/companies", { preHandler: requireAuth }, controller.create);
-  app.patch("/companies/:id", { preHandler: requireAuth }, controller.update);
-  app.delete("/companies/:id", { preHandler: requireAuth }, controller.remove);
+  app.get("/companies/me", { preHandler: requireAuth }, controller.get);
+  app.patch("/companies/me", { preHandler: requireAuth }, controller.update);
 }

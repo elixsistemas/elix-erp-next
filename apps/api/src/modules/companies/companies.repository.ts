@@ -8,19 +8,19 @@ export type Company = {
   created_at: string;
 };
 
-export async function listCompanies(): Promise<Company[]> {
+export async function listCompanies(companyId: number): Promise<Company[]> {
   const pool = await getPool();
-  const result = await pool.request().query(`
+  const result = await pool.request().input("id", companyId).query(`
     SELECT id, name, cnpj, created_at
     FROM companies
-    ORDER BY name
+    WHERE id = @id
   `);
   return result.recordset as Company[];
 }
 
-export async function getCompany(id: number): Promise<Company | null> {
+export async function getCompany(companyId: number): Promise<Company | null> {
   const pool = await getPool();
-  const result = await pool.request().input("id", id).query(`
+  const result = await pool.request().input("id", companyId).query(`
     SELECT id, name, cnpj, created_at
     FROM companies
     WHERE id = @id
@@ -42,11 +42,10 @@ export async function createCompany(data: CompanyCreate): Promise<Company> {
   return result.recordset[0] as Company;
 }
 
-export async function updateCompany(id: number, data: CompanyUpdate): Promise<Company | null> {
+export async function updateCompany(companyId: number, data: CompanyUpdate): Promise<Company | null> {
   const pool = await getPool();
 
-  // update “patch” simples: pega existente e aplica
-  const current = await getCompany(id);
+  const current = await getCompany(companyId);
   if (!current) return null;
 
   const name = data.name ?? current.name;
@@ -54,7 +53,7 @@ export async function updateCompany(id: number, data: CompanyUpdate): Promise<Co
 
   const result = await pool
     .request()
-    .input("id", id)
+    .input("id", companyId)
     .input("name", name)
     .input("cnpj", cnpj)
     .query(`

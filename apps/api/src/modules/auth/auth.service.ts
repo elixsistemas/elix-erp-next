@@ -1,5 +1,5 @@
 import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
+import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import { env } from "../../config/env";
 import { getPool } from "../../config/db";
 import type { LoginInput } from "./auth.schema";
@@ -35,15 +35,19 @@ export async function login(input: LoginInput) {
   const ok = await bcrypt.compare(input.password, user.password_hash);
   if (!ok) return null;
 
-  const token = jwt.sign(
+    const secret: Secret = env.JWT_SECRET;
+    const options: SignOptions = { expiresIn: env.JWT_EXPIRES_IN };
+
+    const token = jwt.sign(
     {
-      sub: String(user.id),
-      companyId: user.company_id,
-      role: user.role
+        sub: String(user.id),
+        companyId: user.company_id,
+        role: user.role
     },
-    env.JWT_SECRET,
-    { expiresIn: env.JWT_EXPIRES_IN }
-  );
+    secret,
+    options
+    );
+
 
   return {
     token,

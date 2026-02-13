@@ -9,8 +9,9 @@ const EnvSchema = z.object({
   DB_USER: z.string(),
   DB_PASS: z.string(),
   DB_ENCRYPT: z.coerce.boolean().default(false),
+
   JWT_SECRET: z.string().min(16),
-  JWT_EXPIRES_IN: z.string().default("8h")
+  JWT_EXPIRES_IN: z.enum(["15m", "30m", "1h", "8h", "12h", "1d", "7d"]).default("8h"),
 });
 
 export const env = EnvSchema.parse(process.env);
