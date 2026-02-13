@@ -1,0 +1,21 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# builds
+dist
+build
+.out
+coverage
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+
+# OS/editor
+.DS_Store
+.vscode
