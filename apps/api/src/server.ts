@@ -1,8 +1,12 @@
+import "dotenv/config";
 import Fastify from "fastify";
+import { env } from "./config/env";
+import { companiesRoutes } from "./modules/companies/companies.routes";
 
 const app = Fastify({ logger: true });
 
 app.get("/health", async () => ({ ok: true }));
 
-const port = Number(process.env.PORT ?? 3333);
-await app.listen({ port, host: "0.0.0.0" });
+await app.register(companiesRoutes);
+
+await app.listen({ port: env.PORT, host: "0.0.0.0" });
