@@ -1,9 +1,10 @@
-
 import {
   loadQuoteWithItems,
   convertQuoteToSaleTx,
   listSales,
   getSale,
+  cancelSaleTx,
+  updateSale
 } from "./sales.repository";
 
 function round2(n: number) {
@@ -20,7 +21,6 @@ export async function convertFromQuote(companyId: number, quoteId: number) {
   if (quote.status === "approved") return { error: "QUOTE_ALREADY_APPROVED" as const };
   if (!items.length) return { error: "QUOTE_EMPTY" as const };
 
-  // Recalcula totais no backend (confiança zero)
   const calcItems = items.map((i) => ({
     productId: i.product_id,
     description: i.description,
@@ -48,10 +48,29 @@ export async function convertFromQuote(companyId: number, quoteId: number) {
   return { data: created };
 }
 
-export function list(companyId: number) {
-  return listSales(companyId);
+export async function list(args: {
+  companyId: number;
+  from?: string;
+  to?: string;
+  customerId?: number;
+}) {
+  return listSales(args);
 }
 
-export function get(companyId: number, saleId: number) {
+export async function get(companyId: number, saleId: number) {
   return getSale(companyId, saleId);
+}
+
+export async function cancel(companyId: number, saleId: number) {
+  return cancelSaleTx({ companyId, saleId });
+}
+
+export async function update(args: {
+  companyId: number;
+  saleId: number;
+  notes?: string | null;
+  paymentMethodId?: number | null;
+  paymentTermId?: number | null;
+}) {
+  return updateSale(args);
 }

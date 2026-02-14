@@ -13,10 +13,21 @@ export async function salesRoutes(app: FastifyInstance) {
     controller.get
   );
 
-  // Converter orçamento -> venda
   app.post<{ Params: IdParams }>(
     "/sales/from-quote/:id",
     { preHandler: requireAuth },
     controller.fromQuote
+  );
+
+  app.post<{ Params: IdParams }>(
+    "/sales/:id/cancel",
+    { preHandler: requireAuth },
+    controller.cancel
+  );
+
+  app.patch<{ Params: IdParams }>(
+    "/sales/:id",
+    { preHandler: requireAuth },
+    controller.update
   );
 }
