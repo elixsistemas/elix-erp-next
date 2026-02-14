@@ -1,15 +1,6 @@
 import { getPool } from "../../config/db";
 import sql from "mssql";
 
-console.log("exports sales.repository loaded");
-export const __exportsCheck = [
-  typeof loadQuoteWithItems,
-  typeof convertQuoteToSaleTx,
-  typeof listSales,
-  typeof getSale
-];
-console.log("__exportsCheck", __exportsCheck);
-
 type QuoteRow = {
   id: number;
   customer_id: number;
