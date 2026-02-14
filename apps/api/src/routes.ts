@@ -7,6 +7,9 @@ import { quotesRoutes } from "./modules/quotes/quotes.routes";
 import { salesRoutes } from "./modules/sales/sales.routes";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes";
 import { inventoryMovementsRoutes } from "./modules/inventory_movements/inventory_movements.routes";
+import { bankAccountsRoutes } from "./modules/bank_accounts/bank_accounts.routes";
+import { accountsReceivableRoutes } from "./modules/accounts_receivable/accounts_receivable.routes";
+
 
 
 export async function routes(app: FastifyInstance) {
@@ -18,4 +21,6 @@ export async function routes(app: FastifyInstance) {
   await app.register(salesRoutes);
   await app.register(inventoryRoutes, { prefix: "/inventory" });
   await app.register(inventoryMovementsRoutes, { prefix: "/inventory" });
+  await app.register(bankAccountsRoutes);
+  await app.register(accountsReceivableRoutes);
 }
