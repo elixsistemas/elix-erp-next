@@ -1,41 +1,15 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { z } from "zod";
-import { IdParamSchema } from "../../config/params";
 import * as service from "./bank_accounts.service";
-
-const CreateSchema = z.object({
-  bankCode: z.string().min(1).max(10),
-  name: z.string().min(2).max(120),
-  agency: z.string().max(20).optional().nullable(),
-  account: z.string().max(30).optional().nullable(),
-  accountDigit: z.string().max(5).optional().nullable(),
-  convenio: z.string().max(30).optional().nullable(),
-  wallet: z.string().max(20).optional().nullable(),
-  settings: z.any().optional().nullable(),
-  active: z.boolean().optional()
-});
-
-const UpdateSchema = CreateSchema.partial();
+import { IdParamSchema } from "../../config/params";
 
 export async function list(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
-  const data = await service.list(companyId);
-  return rep.send(data);
-}
-
-export async function get(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = req.auth!.companyId;
-  const { id } = IdParamSchema.parse(req.params);
-
-  const data = await service.get(companyId, id);
-  if (!data) return rep.code(404).send({ message: "Bank account not found" });
-
-  return rep.send(data);
+  return rep.send(await service.list(companyId));
 }
 
 export async function create(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
-  const body = CreateSchema.parse(req.body);
+  const body = req.body as any;
 
   const created = await service.create({
     companyId,
@@ -48,20 +22,35 @@ export async function create(req: FastifyRequest, rep: FastifyReply) {
 export async function update(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
   const { id } = IdParamSchema.parse(req.params);
-  const body = UpdateSchema.parse(req.body);
+  const body = req.body as any;
 
-  const updated = await service.update({ companyId, id, ...body });
-  if (!updated) return rep.code(404).send({ message: "Bank account not found" });
+  const updated = await service.update({
+    companyId,
+    id,
+    ...body
+  });
+
+  if (!updated) return rep.code(404).send({ message: "Not found" });
 
   return rep.send(updated);
 }
 
-export async function remove(req: FastifyRequest, rep: FastifyReply) {
+export async function desativar(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
   const { id } = IdParamSchema.parse(req.params);
 
-  const ok = await service.remove(companyId, id);
-  if (!ok) return rep.code(404).send({ message: "Bank account not found" });
+  const removed = await service.desativar(companyId, id);
+  if (!removed) return rep.code(404).send({ message: "Not found" });
+
+  return rep.send({ ok: true });
+}
+
+export async function activate(req: FastifyRequest, rep: FastifyReply) {
+  const companyId = req.auth!.companyId;
+  const { id } = IdParamSchema.parse(req.params);
+
+  const activated = await service.activate(companyId, id);
+  if (!activated) return rep.code(404).send({ message: "Not found or already active" });
 
   return rep.send({ ok: true });
 }

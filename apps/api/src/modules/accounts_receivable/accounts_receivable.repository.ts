@@ -31,6 +31,7 @@ export async function createReceivableFromSale(args: {
   documentNo: string | null;
   note: string | null;
 }) {
+    try {
   const pool = await getPool();
 
   const r = await pool.request()
@@ -57,7 +58,17 @@ export async function createReceivableFromSale(args: {
     `);
 
   return r.recordset[0];
+    } catch (err: any) {
+    const msg = String(err?.message ?? "");
+
+    if (msg.includes("UX_accounts_receivable_sale")) {
+        return { error: "RECEIVABLE_ALREADY_EXISTS" as const };
+    }
+
+    throw err;
+    }
 }
+
 
 export async function updateReceivable(args: {
   companyId: number;
@@ -111,13 +122,19 @@ export async function cancelReceivable(args: { companyId: number; id: number }) 
   return { data: { ok: true } };
 }
 
-export async function getSaleForReceivable(companyId: number, saleId: number) {
+export async function getReceivableBySale(companyId: number, saleId: number) {
   const pool = await getPool();
-  const r = await pool.request().input("company_id", companyId).input("sale_id", saleId).query(`
-    SELECT id, customer_id, total
-    FROM dbo.sales
-    WHERE company_id=@company_id AND id=@sale_id
-  `);
+
+  const r = await pool.request()
+    .input("company_id", companyId)
+    .input("sale_id", saleId)
+    .query(`
+      SELECT TOP 1 *
+      FROM dbo.accounts_receivable
+      WHERE company_id=@company_id AND sale_id=@sale_id
+      ORDER BY id DESC
+    `);
+
   return r.recordset[0] ?? null;
 }
 

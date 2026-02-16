@@ -13,7 +13,7 @@ export async function listCompanies(companyId: number): Promise<Company[]> {
   const result = await pool.request().input("id", companyId).query(`
     SELECT id, name, cnpj, created_at
     FROM companies
-    WHERE id = @id
+    WHERE id = @id AND is_active = 1
   `);
   return result.recordset as Company[];
 }
@@ -23,7 +23,7 @@ export async function getCompany(companyId: number): Promise<Company | null> {
   const result = await pool.request().input("id", companyId).query(`
     SELECT id, name, cnpj, created_at
     FROM companies
-    WHERE id = @id
+    WHERE id = @id AND is_active = 1
   `);
   return (result.recordset[0] as Company) ?? null;
 }
@@ -35,16 +35,16 @@ export async function createCompany(data: CompanyCreate): Promise<Company> {
     .input("name", data.name)
     .input("cnpj", data.cnpj ?? null)
     .query(`
-      INSERT INTO companies (name, cnpj)
+      INSERT INTO companies (name, cnpj, is_active)
       OUTPUT INSERTED.id, INSERTED.name, INSERTED.cnpj, INSERTED.created_at
-      VALUES (@name, @cnpj)
+      VALUES (@name, @cnpj, 1)
     `);
+
   return result.recordset[0] as Company;
 }
 
 export async function updateCompany(companyId: number, data: CompanyUpdate): Promise<Company | null> {
   const pool = await getPool();
-
   const current = await getCompany(companyId);
   if (!current) return null;
 
@@ -60,7 +60,7 @@ export async function updateCompany(companyId: number, data: CompanyUpdate): Pro
       UPDATE companies
       SET name=@name, cnpj=@cnpj
       OUTPUT INSERTED.id, INSERTED.name, INSERTED.cnpj, INSERTED.created_at
-      WHERE id=@id
+      WHERE id=@id AND is_active = 1
     `);
 
   return (result.recordset[0] as Company) ?? null;
@@ -69,7 +69,9 @@ export async function updateCompany(companyId: number, data: CompanyUpdate): Pro
 export async function deleteCompany(id: number): Promise<boolean> {
   const pool = await getPool();
   const result = await pool.request().input("id", id).query(`
-    DELETE FROM companies WHERE id=@id
+    UPDATE companies
+    SET is_active = 0, deleted_at = GETDATE()
+    WHERE id = @id AND is_active = 1
   `);
   return (result.rowsAffected?.[0] ?? 0) > 0;
 }

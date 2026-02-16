@@ -72,7 +72,9 @@ export async function deleteCustomer(companyId: number, id: number) {
     .input("company_id", companyId)
     .input("id", id)
     .query(`
-      DELETE FROM customers
-      WHERE id = @id AND company_id = @company_id
+        UPDATE customers
+        SET is_active = 0,
+            deleted_at = GETDATE()
+        WHERE id = @id AND company_id = @company_id;
     `);
 }

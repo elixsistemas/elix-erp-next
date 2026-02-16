@@ -4,21 +4,10 @@ export function list(companyId: number) {
   return repo.listReceivables(companyId);
 }
 
-export function get(companyId: number, id: number) {
-  return repo.getReceivable(companyId, id);
-}
-
-export function create(args: {
-  companyId: number;
-  customerId: number;
-  saleId: number | null;
-  bankAccountId: number;
-  dueDate: string;
-  amount: number;
-  documentNo: string | null;
-  note: string | null;
-}) {
-  return repo.createReceivable(args);
+export async function getBySale(companyId: number, saleId: number) {
+  const rec = await repo.getReceivableBySale(companyId, saleId);
+  if (!rec) return { error: "NOT_FOUND" as const };
+  return { data: rec };
 }
 
 export function update(args: {
@@ -43,7 +32,7 @@ export async function createFromSale(args: {
   documentNo: string | null;
   note: string | null;
 }) {
-  const sale = await repo.getSaleForReceivable(args.companyId, args.saleId);
+  const sale = await repo.getReceivableBySale(args.companyId, args.saleId);
   if (!sale) return { error: "SALE_NOT_FOUND" as const };
 
   const created = await repo.createReceivableFromSale({
@@ -57,7 +46,11 @@ export async function createFromSale(args: {
     note: args.note
   });
 
-  return { data: created };
+if ("error" in created) {
+  return { error: "RECEIVABLE_ALREADY_EXISTS" as const };
+}
+
+    return { data: created };
 }
 
 export async function issueMock(companyId: number, id: number) {

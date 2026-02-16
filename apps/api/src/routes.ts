@@ -8,7 +8,10 @@ import { salesRoutes } from "./modules/sales/sales.routes";
 import { inventoryRoutes } from "./modules/inventory/inventory.routes";
 import { inventoryMovementsRoutes } from "./modules/inventory_movements/inventory_movements.routes";
 import { bankAccountsRoutes } from "./modules/bank_accounts/bank_accounts.routes";
-import { accountsReceivableRoutes } from "./modules/accounts_receivable/accounts_receivable.routes";
+import { receivablesRoutes } from "./modules/receivables/receivables.routes";
+import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
+import { brandingRoutes } from "./modules/branding/branding.routes";
+import { bankBalanceEventsRoutes } from "./modules/bank_balance_events/bank_balance_events.routes";
 
 
 
@@ -22,5 +25,8 @@ export async function routes(app: FastifyInstance) {
   await app.register(inventoryRoutes, { prefix: "/inventory" });
   await app.register(inventoryMovementsRoutes, { prefix: "/inventory" });
   await app.register(bankAccountsRoutes);
-  await app.register(accountsReceivableRoutes);
+  await app.register(receivablesRoutes);
+  await app.register(dashboardRoutes);
+  await app.register(brandingRoutes);
+  await app.register(bankBalanceEventsRoutes);
 }

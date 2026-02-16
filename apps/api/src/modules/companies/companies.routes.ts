@@ -6,4 +6,6 @@ export async function companiesRoutes(app: FastifyInstance) {
   app.get("/companies", { preHandler: requireAuth }, controller.list);
   app.get("/companies/me", { preHandler: requireAuth }, controller.get);
   app.patch("/companies/me", { preHandler: requireAuth }, controller.update);
+  app.post("/companies", { preHandler: requireAuth }, controller.create);
+  app.delete("/companies/:id", { preHandler: requireAuth }, controller.remove);
 }

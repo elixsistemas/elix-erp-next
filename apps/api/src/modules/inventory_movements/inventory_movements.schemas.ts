@@ -1,16 +1,19 @@
 import { z } from "zod";
 
+export const movementTypeSchema = z.enum(["IN", "OUT", "ADJUST_POS", "ADJUST_NEG"]);
+
 export const createMovementSchema = z.object({
-  productId: z.number().int().positive(),
-  type: z.enum(["IN", "OUT", "ADJUST_POS", "ADJUST_NEG"]),
-  quantity: z.number().int().positive(),
-  source: z.string().max(50).optional(),
-  sourceId: z.number().int().positive().optional(),
-  note: z.string().max(255).optional(),
+  productId: z.coerce.number().int().positive(),
+  type: movementTypeSchema,
+  quantity: z.coerce.number().int().positive(),
+  source: z.string().trim().min(1).optional(),
+  sourceId: z.coerce.number().int().positive().optional(),
+  note: z.string().trim().max(255).optional().nullable(),
 });
 
 export const listMovementsQuerySchema = z.object({
   productId: z.coerce.number().int().positive().optional(),
-  limit: z.coerce.number().int().min(1).max(500).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
+  type: movementTypeSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
 });

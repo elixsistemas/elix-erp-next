@@ -4,5 +4,8 @@
   "scripts": {
     "dev": "pnpm -r dev",
     "build": "pnpm -r build"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.2.0"
   }
 }
