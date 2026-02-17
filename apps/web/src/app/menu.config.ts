@@ -12,8 +12,17 @@ export const MENU_CONFIG: MenuItem[] = [
 
   { key: "finance", label: "Financeiro", path: "/finance" },
   { key: "sales", label: "Vendas", path: "/sales" },
-  { key: "inventory", label: "Estoque", path: "/inventory" },
-
+  //{ key: "inventory", label: "Estoque", path: "/inventory" },
+  // ✅ Estoque (grupo)
+  {
+    key: "inventory",
+    label: "Estoque",
+    path: "/inventory",
+    children: [
+      { key: "inventory_stock", label: "Saldo atual", path: "/inventory" },
+      { key: "inventory_movs", label: "Movimentações", path: "/inventory/movements" },
+    ],
+  },
   // ✅ Cadastros (grupo)
   {
     key: "cadastros",

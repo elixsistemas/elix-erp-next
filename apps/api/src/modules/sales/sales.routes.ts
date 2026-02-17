@@ -5,6 +5,19 @@ import * as controller from "./sales.controller";
 type IdParams = { id: string };
 
 export async function salesRoutes(app: FastifyInstance) {
+
+  app.post<{ Params: IdParams }>(
+    "/sales/:id/fiscal/issue",
+    { preHandler: requireAuth },
+    controller.issueFiscal
+  );
+
+  app.get<{ Params: IdParams }>(
+    "/sales/:id/fiscal",
+    { preHandler: requireAuth },
+    controller.listFiscal
+  );
+
   app.get("/sales", { preHandler: requireAuth }, controller.list);
 
   app.get<{ Params: IdParams }>(

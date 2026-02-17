@@ -98,10 +98,12 @@ export async function convertQuoteToSaleTx(args: {
 
     const sale = saleRes.recordset[0];
     const saleId = Number(sale.id);
+    const occurredAt = sale?.created_at ?? null; // pode ser Date ou string, o driver costuma aceitar
 
-    // 2) Insere itens + estoque OUT quando kind=product
+    // 2) Insere itens + estoque OUT quando kind=product (com idempotência por item)
     for (const it of args.items) {
-      await new sql.Request(tx)
+      // Insere item e pega o ID (pra idempotency_key)
+      const itemRes = await new sql.Request(tx)
         .input("sale_id", saleId)
         .input("product_id", it.productId)
         .input("description", it.description)
@@ -110,21 +112,34 @@ export async function convertQuoteToSaleTx(args: {
         .input("total", it.total)
         .query(`
           INSERT INTO sale_items (sale_id, product_id, description, quantity, unit_price, total)
+          OUTPUT INSERTED.id
           VALUES (@sale_id, @product_id, @description, @quantity, @unit_price, @total)
         `);
 
-        if (it.kind === "product") {
-        await new sql.Request(tx)
-            .input("company_id", args.companyId)
-            .input("product_id", it.productId)
-            .input("type", "OUT")
-            .input("quantity", it.quantity)
-            .input("source", "SALE")
-            .input("source_id", saleId)
-            .input("note", `Auto OUT from sale #${saleId}`)
-            .execute("dbo.sp_inventory_move");
-        }
+      const saleItemId = Number(itemRes.recordset[0]?.id);
+      if (!Number.isFinite(saleItemId) || saleItemId <= 0) {
+        throw new Error("Failed to create sale item");
+      }
 
+      // Baixa estoque somente para produto
+      if (it.kind === "product") {
+        await new sql.Request(tx)
+          .input("company_id", args.companyId)
+          .input("product_id", it.productId)
+          .input("type", "OUT")
+          .input("quantity", it.quantity)
+          .input("source", "SALE")
+          .input("source_id", saleId)
+          .input("note", `Auto OUT from sale #${saleId}`)
+
+          // ✅ novos campos (ledger)
+          .input("source_type", "SALE")
+          .input("reason", "SALE")
+          .input("idempotency_key", `SALE:${saleId}:ITEM:${saleItemId}`)
+          .input("occurred_at", occurredAt)
+
+          .execute("dbo.sp_inventory_move");
+      }
     }
 
     // 3) Marca quote como approved
@@ -207,8 +222,6 @@ export async function getSale(companyId: number, saleId: number) {
       WHERE company_id=@company_id AND id=@sale_id
     `);
 
-
-
   const sale = s.recordset[0] ?? null;
   if (!sale) return null;
 
@@ -235,7 +248,7 @@ export async function cancelSaleTx(args: { companyId: number; saleId: number }) 
       .input("company_id", args.companyId)
       .input("sale_id", args.saleId)
       .query(`
-        SELECT id, company_id, status
+        SELECT id, company_id, status, created_at
         FROM sales WITH (UPDLOCK, ROWLOCK)
         WHERE company_id=@company_id AND id=@sale_id
       `);
@@ -258,15 +271,23 @@ export async function cancelSaleTx(args: { companyId: number; saleId: number }) 
       return { error: "SALE_NOT_OPEN" as const };
     }
 
+    // Pega itens + kind via join (estorna apenas produtos)
     const itemsRes = await new sql.Request(tx)
+      .input("company_id", args.companyId)
       .input("sale_id", args.saleId)
       .query(`
-        SELECT product_id, quantity
-        FROM sale_items
-        WHERE sale_id=@sale_id
+        SELECT si.id, si.description, si.quantity, si.unit_price, si.total, p.kind
+        FROM sale_items si
+        INNER JOIN sales s ON s.id = si.sale_id AND s.company_id = @company_id
+        INNER JOIN products p ON p.id = si.product_id AND p.company_id = @company_id
+        WHERE si.sale_id=@sale_id
       `);
 
     for (const it of itemsRes.recordset) {
+      const kind = String(it.kind ?? "").toLowerCase();
+      if (kind !== "product") continue;
+
+      const saleItemId = Number(it.id);
       const qty = Number(it.quantity);
 
       if (!Number.isFinite(qty) || qty <= 0) {
@@ -288,6 +309,13 @@ export async function cancelSaleTx(args: { companyId: number; saleId: number }) 
         .input("source", "SALE_CANCEL")
         .input("source_id", args.saleId)
         .input("note", `Reversal IN from cancelled sale #${args.saleId}`)
+
+        // ✅ novos campos (ledger) + idempotência por item
+        .input("source_type", "SALE")
+        .input("reason", "RETURN")
+        .input("idempotency_key", `SALE_CANCEL:${args.saleId}:ITEM:${saleItemId}`)
+        .input("occurred_at", new Date().toISOString())
+
         .execute("dbo.sp_inventory_move");
     }
 

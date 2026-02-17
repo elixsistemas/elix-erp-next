@@ -7,8 +7,16 @@ export type InventoryMovementRow = {
   product_id: number;
   type: MovementType;
   quantity: number;
+
   source: string | null;
   source_id: number | null;
+
+  // novos
+  source_type: string | null;
+  reason: string | null;
+  idempotency_key: string | null;
+  occurred_at: string | null;
+
   note: string | null;
   created_at: string;
 };
@@ -49,6 +57,13 @@ export async function createMovement(companyId: number, data: InventoryMovementC
     .input("source", data.source ?? null)
     .input("source_id", data.sourceId ?? null)
     .input("note", data.note ?? null)
+
+    // novos
+    .input("source_type", data.sourceType ?? null)
+    .input("reason", data.reason ?? null)
+    .input("idempotency_key", data.idempotencyKey ?? null)
+    .input("occurred_at", data.occurredAt ?? null)
+
     .execute("dbo.sp_inventory_move");
 }
 
@@ -74,6 +89,10 @@ export async function listMovements(companyId: number, query: InventoryMovementQ
         quantity,
         source,
         source_id,
+        source_type,
+        reason,
+        idempotency_key,
+        occurred_at,
         note,
         created_at
       FROM dbo.inventory_movements
@@ -141,3 +160,26 @@ export async function listStock(companyId: number): Promise<InventoryStockRow[]>
 
   return result.recordset;
 }
+
+export async function getMovementByIdempotencyKey(companyId: number, key: string): Promise<InventoryMovementRow | null> {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .input("key", key)
+    .query<InventoryMovementRow>(`
+      SELECT TOP 1
+        id, company_id, product_id, [type], quantity,
+        source, source_id,
+        source_type, reason, idempotency_key, occurred_at,
+        note, created_at
+      FROM dbo.inventory_movements
+      WHERE company_id=@company_id AND idempotency_key=@key
+      ORDER BY id DESC
+    `);
+
+  return result.recordset[0] ?? null;
+}
+
+

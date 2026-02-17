@@ -5,6 +5,11 @@ import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPag
 import CompaniesPage from "./pages/cadastros/empresas/CompaniesPage";
 import CustomersPage from "./pages/cadastros/clientes/CustomersPage";
 import ProductsPage from "./pages/cadastros/produtos/ProductsPage";
+import InventoryPage from "./pages/estoque/InventoryPage";
+import InventoryMovementsPage from "./pages/estoque/InventoryMovementsPage";
+import SalesPage from "./pages/vendas/SalesPage";
+import SaleDetailsPage from "./pages/vendas/SaleDetailsPage";
+
 import { Toaster } from "sonner";
 
 import Login from "@/pages/Login";
@@ -39,6 +44,10 @@ function AppBoot() {
             <Route path="/cadastros/empresas" element={<CompaniesPage />} />
             <Route path="/cadastros/clientes" element={<CustomersPage />} />
             <Route path="/cadastros/produtos" element={<ProductsPage />} />
+            <Route path="/inventory" element={<InventoryPage />} />
+            <Route path="/inventory/movements" element={<InventoryMovementsPage />} />
+            <Route path="/sales" element={<SalesPage />} />
+            <Route path="/sales/:id" element={<SaleDetailsPage />} />
           </Route>
         </Route>
 

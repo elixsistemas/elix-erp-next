@@ -5,9 +5,12 @@ import { ChevronDown } from "lucide-react";
 import type { MenuItem } from "@/app/menu.config";
 
 function ItemLink({ item, depth = 0 }: { item: MenuItem; depth?: number }) {
+  const end = item.path === "/inventory"; // ✅ só o saldo atual precisa ser exato
+
   return (
     <NavLink
       to={item.path}
+      end={end}
       className={({ isActive }) =>
         `block px-3 py-2 rounded-md text-sm transition-colors ${
           depth > 0 ? "ml-2" : ""
@@ -22,6 +25,7 @@ function ItemLink({ item, depth = 0 }: { item: MenuItem; depth?: number }) {
     </NavLink>
   );
 }
+
 
 export function Sidebar() {
   const menu = useMenu();

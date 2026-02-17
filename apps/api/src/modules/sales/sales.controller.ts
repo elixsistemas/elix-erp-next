@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { IdParamSchema } from "../../config/params";
 import * as service from "./sales.service";
+import { issueFiscalTx, listFiscalBySale } from "./sales.fiscal.repository";
 import { z } from "zod";
 
 const ListQuerySchema = z.object({
@@ -8,6 +9,47 @@ const ListQuerySchema = z.object({
   to: z.string().optional(),
   customerId: z.coerce.number().int().positive().optional()
 });
+
+const IssueFiscalSchema = z.object({
+  type: z.enum(["NFE", "NFSE", "BOTH"])
+});
+
+export async function issueFiscal(req: FastifyRequest, rep: FastifyReply) {
+  const companyId = req.auth!.companyId;
+  const { id } = IdParamSchema.parse(req.params);
+  const body = IssueFiscalSchema.parse(req.body);
+
+  try {
+    const docs = await issueFiscalTx({
+      companyId,
+      saleId: id,
+      type: body.type
+    });
+
+    return rep.code(201).send(docs);
+
+  } catch (err: any) {
+    const msg = String(err?.message ?? "");
+
+    // ✅ venda não encontrada (multi-empresa protegido)
+    if (msg === "SALE_NOT_FOUND") {
+      return rep.code(404).send({ message: "Sale not found" });
+    }
+
+    // ✅ regra B (já existe documento ativo)
+    if (msg.startsWith("FISCAL_ALREADY_EXISTS")) {
+      const type = msg.split(":")[1] ?? "";
+      return rep.code(409).send({
+        message: `Fiscal document already exists for ${type}`
+      });
+    }
+
+    // fallback seguro
+    return rep.code(500).send({
+      message: "Unexpected fiscal error"
+    });
+  }
+}
 
 const UpdateBodySchema = z.object({
   notes: z.string().max(500).nullable().optional(),
@@ -72,6 +114,16 @@ export async function fromQuote(req: FastifyRequest, rep: FastifyReply) {
 
     throw err;
   }
+}
+
+export async function listFiscal(req: FastifyRequest, rep: FastifyReply) {
+  const companyId = req.auth!.companyId;
+  const { id } = IdParamSchema.parse(req.params);
+
+  const data = await listFiscalBySale({ companyId, saleId: id });
+  if (!data) return rep.code(404).send({ message: "Sale not found" });
+
+  return rep.send(data);
 }
 
 export async function cancel(req: FastifyRequest, rep: FastifyReply) {
