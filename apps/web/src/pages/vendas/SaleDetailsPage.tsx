@@ -1,53 +1,87 @@
-// apps/web/src/pages/vendas/SaleDetailsPage.tsx
 import * as React from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { getSale, listSaleFiscal, type SaleDetails } from "./sales.service";
+import { toast } from "sonner";
+
+import { useSaleDetails } from "./useSaleDetails";
+import { issueSaleFiscal } from "./sales.service";
+
+import { SaleItemsTable } from "./components/SaleItemsTable";
+import { PaymentCard } from "./components/PaymentCard";
+import { FiscalCard } from "./components/FiscalCard";
+import { InstallmentsModal } from "./components/InstallmentsModal";
+
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 export default function SaleDetailsPage() {
   const nav = useNavigate();
   const { id } = useParams();
   const saleId = Number(id);
 
-  const [data, setData] = React.useState<SaleDetails | null>(null);
-  const [fiscal, setFiscal] = React.useState<{ documents: any[] } | null>(null);
-  const [loading, setLoading] = React.useState(false);
+  const { data, fiscal, loading, reload } = useSaleDetails(saleId);
 
-  const reload = React.useCallback(async () => {
-    if (!Number.isFinite(saleId) || saleId <= 0) return;
-    setLoading(true);
-    try {
-      const [s, f] = await Promise.all([getSale(saleId), listSaleFiscal(saleId)]);
-      setData(s);
-      setFiscal(f);
-    } finally {
-      setLoading(false);
-    }
-  }, [saleId]);
-
-  React.useEffect(() => {
-    reload();
-  }, [reload]);
-
-  const docs = fiscal?.documents ?? [];
-  const nfe = docs.find((d) => d.type === "NFE") ?? null;
-  const nfse = docs.find((d) => d.type === "NFSE") ?? null;
+  const [issuing, setIssuing] = React.useState<"NFE" | "NFSE" | "BOTH" | null>(null);
+  const [installmentsOpen, setInstallmentsOpen] = React.useState(false);
 
   if (!Number.isFinite(saleId) || saleId <= 0) {
     return <div className="p-4">ID inválido.</div>;
   }
 
+  async function handleIssue(type: "NFE" | "NFSE" | "BOTH") {
+    setIssuing(type);
+    try {
+      await issueSaleFiscal(saleId, type);
+      toast.success("Documento fiscal gerado.");
+      await reload();
+    } catch (e: any) {
+      const status = Number(e?.status ?? 0);
+      const msg = String(e?.message ?? "");
+
+      if (status === 409 || msg.toLowerCase().includes("already exists")) {
+        toast.warning("Já existe documento fiscal ativo para este tipo.");
+        await reload();
+        return;
+      }
+      if (status === 404) {
+        toast.error("Venda não encontrada.");
+        return;
+      }
+      toast.error(msg.slice(0, 160));
+    } finally {
+      setIssuing(null);
+    }
+  }
+
+  const sale = data?.sale ?? null;
+  const docs = fiscal?.documents ?? [];
+
+  const canClose = sale?.status === "open";
+
   return (
-    <div className="p-4 space-y-4">
-      <div className="flex items-center justify-between gap-2">
+    <div className="space-y-4">
+      <div className="flex items-start justify-between gap-2">
         <div>
           <div className="text-xs text-muted-foreground">Venda</div>
           <h1 className="text-xl font-semibold">#{saleId}</h1>
         </div>
 
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={() => nav("/sales")}>Voltar</Button>
-          <Button variant="secondary" onClick={reload}>Recarregar</Button>
+          <Button variant="secondary" onClick={() => nav("/sales")}>
+            Voltar
+          </Button>
+          <Button variant="secondary" onClick={reload} disabled={loading || issuing !== null}>
+            Recarregar
+          </Button>
+
+          {canClose ? (
+            <Button onClick={() => setInstallmentsOpen(true)} disabled={loading || issuing !== null}>
+              Gerar parcelas / Fechar
+            </Button>
+          ) : (
+            <Button variant="secondary" disabled>
+              Venda {sale?.status === "closed" ? "finalizada" : "indisponível"}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -57,96 +91,70 @@ export default function SaleDetailsPage() {
         <div>Venda não encontrada.</div>
       ) : (
         <>
-          {/* Top summary */}
+          {/* Summary */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             <div className="rounded-xl border p-4">
               <div className="text-xs text-muted-foreground">Status</div>
-              <div className="text-lg font-semibold">{data.sale.status}</div>
-              <div className="text-xs text-muted-foreground mt-2">Cliente #{data.sale.customer_id}</div>
+              <div className="text-lg font-semibold">{sale!.status}</div>
+              <div className="text-xs text-muted-foreground mt-2">Cliente #{sale!.customer_id}</div>
             </div>
 
             <div className="rounded-xl border p-4">
               <div className="text-xs text-muted-foreground">Total</div>
-              <div className="text-lg font-semibold tabular-nums">{Number(data.sale.total).toFixed(2)}</div>
+              <div className="text-lg font-semibold tabular-nums">{brl.format(Number(sale!.total))}</div>
               <div className="text-xs text-muted-foreground mt-2">
-                Subtotal: {Number(data.sale.subtotal).toFixed(2)} | Desc: {Number(data.sale.discount ?? 0).toFixed(2)}
+                Subtotal: {brl.format(Number(sale!.subtotal))} | Desc: {brl.format(Number(sale!.discount ?? 0))}
               </div>
             </div>
 
             <div className="rounded-xl border p-4">
               <div className="text-xs text-muted-foreground">Criada em</div>
-              <div className="text-lg font-semibold">{new Date(data.sale.created_at).toLocaleString("pt-BR")}</div>
-              <div className="text-xs text-muted-foreground mt-2">Quote #{data.sale.quote_id ?? "-"}</div>
+              <div className="text-lg font-semibold">
+                {new Date(sale!.created_at).toLocaleString("pt-BR")}
+              </div>
+              <div className="text-xs text-muted-foreground mt-2">
+                Quote #{sale!.quote_id ?? "—"} · Pedido #{sale!.order_id ?? "—"}
+              </div>
             </div>
           </div>
 
-          {/* Items + Fiscal card */}
+          {/* Payment */}
+          <PaymentCard sale={sale!} disabled={!canClose} onSaved={reload} />
+
+          {/* Items + Fiscal */}
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-            <div className="xl:col-span-2 rounded-xl border overflow-hidden">
-              <div className="p-3 border-b bg-muted/40 font-medium">Itens</div>
-              <table className="w-full text-sm">
-                <thead className="bg-muted/20">
-                  <tr>
-                    <th className="text-left p-3">Descrição</th>
-                    <th className="text-right p-3">Qtd</th>
-                    <th className="text-right p-3">Unit</th>
-                    <th className="text-right p-3">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((it) => (
-                    <tr key={it.id} className="border-t">
-                      <td className="p-3">
-                        <div className="font-medium">{it.description}</div>
-                        <div className="text-xs text-muted-foreground">Produto #{it.product_id}</div>
-                      </td>
-                      <td className="p-3 text-right tabular-nums">{it.quantity}</td>
-                      <td className="p-3 text-right tabular-nums">{Number(it.unit_price).toFixed(2)}</td>
-                      <td className="p-3 text-right tabular-nums">{Number(it.total).toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="xl:col-span-2">
+              <SaleItemsTable items={data.items} />
             </div>
 
-            <div className="rounded-xl border p-4 space-y-3">
-              <div className="font-medium">Fiscal</div>
-
-              <div className="rounded-lg border p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">NF-e</div>
-                    <div className="text-xs text-muted-foreground">
-                      {nfe ? `Status: ${nfe.status}` : "Não gerada"}
-                    </div>
-                  </div>
-                  <Button size="sm" variant="secondary" disabled>
-                    {nfe ? "Ver" : "Gerar"}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="rounded-lg border p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-medium">NFS-e</div>
-                    <div className="text-xs text-muted-foreground">
-                      {nfse ? `Status: ${nfse.status}` : "Não gerada"}
-                    </div>
-                  </div>
-                  <Button size="sm" variant="secondary" disabled>
-                    {nfse ? "Ver" : "Gerar"}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="text-xs text-muted-foreground">
-                * Botões ainda em stub. Próximo nível: emitir/cancelar + PDF/XML.
-              </div>
-            </div>
+            <FiscalCard
+              docs={docs}
+              loading={loading}
+              issuing={issuing}
+              onReload={reload}
+              onIssue={handleIssue}
+            />
           </div>
+
+          {/* Notes */}
+          {sale!.notes ? (
+            <div className="rounded-xl border p-4">
+              <div className="text-xs text-muted-foreground">Observações</div>
+              <div className="whitespace-pre-wrap mt-2">{sale!.notes}</div>
+            </div>
+          ) : null}
         </>
       )}
+
+      {/* Modal */}
+      {sale ? (
+        <InstallmentsModal
+          sale={sale}
+          open={installmentsOpen}
+          onOpenChange={setInstallmentsOpen}
+          onClosed={reload}
+        />
+      ) : null}
     </div>
   );
 }

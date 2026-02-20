@@ -13,6 +13,9 @@ import { dashboardRoutes } from "./modules/dashboard/dashboard.routes";
 import { brandingRoutes } from "./modules/branding/branding.routes";
 import { bankBalanceEventsRoutes } from "./modules/bank_balance_events/bank_balance_events.routes";
 import { fiscalRoutes } from "./modules/fiscal/fiscal.routes";
+import { ordersRoutes } from "./modules/orders/orders.routes";
+import { paymentTermsRoutes } from "./modules/payment_terms/payment_terms.routes";
+import { suppliersRoutes } from "./modules/suppliers/suppliers.routes";
 
 
 export async function routes(app: FastifyInstance) {
@@ -30,4 +33,7 @@ export async function routes(app: FastifyInstance) {
   await app.register(brandingRoutes);
   await app.register(bankBalanceEventsRoutes);
   await app.register(fiscalRoutes);
+  await app.register(ordersRoutes);
+  await app.register(paymentTermsRoutes);
+  await app.register(suppliersRoutes);
 }

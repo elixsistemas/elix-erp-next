@@ -3,9 +3,73 @@ import {
   convertQuoteToSaleTx,
   listSales,
   getSale,
+  getSaleForClosing,
   cancelSaleTx,
-  updateSale
+  updateSale,
+  closeSaleTx,
+  closeSaleWithReceivablesTx
 } from "./sales.repository";
+
+import { getPaymentTermOffsets } from "../payment_terms/payment_terms.service";
+import type { CloseSaleBody } from "./sales.schema";
+
+
+function toUTCDateString(d: Date) {
+  return d.toISOString().slice(0, 10);
+}
+
+function addDaysUTC(yyyyMmDd: string, days: number) {
+  const [y, m, d] = yyyyMmDd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return toUTCDateString(dt);
+}
+
+function splitAmounts(total: number, n: number) {
+  const cents = Math.round(total * 100);
+  const base = Math.floor(cents / n);
+  const rem = cents - base * n;
+
+  const parts = Array(n).fill(base);
+  for (let i = 0; i < rem; i++) parts[i] += 1;
+
+  return parts.map((c: number) => c / 100);
+}
+
+export async function previewInstallments(companyId: number, saleId: number) {
+  const sale = await getSaleForClosing(companyId, saleId);
+  if (!sale) return { error: "SALE_NOT_FOUND" as const };
+
+  const status = String(sale.status ?? "").toLowerCase();
+  if (status !== "open") return { error: "SALE_NOT_OPEN" as const };
+
+  if (!sale.payment_method_id) return { error: "PAYMENT_METHOD_REQUIRED" as const };
+  if (!sale.payment_term_id) return { error: "PAYMENT_TERM_REQUIRED" as const };
+
+  // busca offsets do payment_term (via service do módulo)
+  let offsets: number[];
+  try {
+    offsets = await getPaymentTermOffsets(companyId, Number(sale.payment_term_id));
+  } catch {
+    return { error: "PAYMENT_TERM_INVALID" as const };
+  }
+
+  const issueDate = toUTCDateString(new Date()); // hoje UTC
+  const dueDates = offsets.map((o) => addDaysUTC(issueDate, o));
+  const amounts = splitAmounts(Number(sale.total), dueDates.length);
+
+  return {
+    data: {
+      issueDate,
+      total: Number(sale.total),
+      installments: dueDates.map((dueDate, i) => ({
+        installmentNumber: i + 1,
+        dueDate,
+        amount: amounts[i]
+      }))
+    }
+  };
+}
 
 function round2(n: number) {
   return Math.round(n * 100) / 100;
@@ -73,4 +137,15 @@ export async function update(args: {
   paymentTermId?: number | null;
 }) {
   return updateSale(args);
+}
+
+export async function close(companyId: number, saleId: number, body: CloseSaleBody) {
+  return closeSaleWithReceivablesTx({
+    companyId,
+    saleId,
+    bankAccountId: body.bankAccountId,
+    documentNo: body.documentNo ?? null,
+    note: body.note ?? null,
+    installments: body.installments
+  });
 }

@@ -1,34 +1,37 @@
-import { useCustomers } from "./useCustomers";
+import { CustomerSheet } from "./components/CustomerSheet";
+import { CustomersTable } from "./components/CustomersTable";
 import { CustomerToolbar } from "./components/CustomersToolbar";
-import { CustomerTable } from "./components/CustomersTable";
-import { CustomersDialog } from "./components/CustomersDialog";
+import { useCustomers } from "./useCustomers";
 
-export default function CompaniesPage() {
-  const c = useCustomers();
+export default function CustomersPage() {
+  const vm = useCustomers();
 
   return (
-    <div className="p-4 space-y-4">
-      <h1 className="text-xl font-semibold">Empresas</h1>
-
-      <CustomerToolbar q={c.q} onChangeQ={c.setQ} onCreate={c.openCreate} />
-
-      <CustomerTable
-        rows={c.rows}
-        loading={c.loading}
-        onEdit={c.openEdit}
-        onDelete={(row) => {
-          const ok = window.confirm(`Excluir "${row.name}"?`);
-          if (ok) c.remove(row);
-        }}
+    <div className="p-6 space-y-4">
+      <CustomerToolbar
+        q={vm.q}
+        onChangeQ={vm.setQ}
+        showInactive={vm.showInactive}
+        onToggleInactive={vm.setShowInactive}
+        loading={vm.loading}
+        onCreate={vm.onCreate}
+        onReload={vm.reload}
       />
 
-      <CustomersDialog
-        open={c.dialogOpen}
-        mode={c.mode}
-        initial={c.editing}
-        saving={c.saving}
-        onClose={() => c.setDialogOpen(false)}
-        onSubmit={c.submit}
+      <CustomersTable
+        rows={vm.rows}
+        loading={vm.loading}
+        onEdit={vm.onEdit}
+        onRemove={vm.onRemove}
+      />
+
+      <CustomerSheet
+        open={vm.open}
+        mode={vm.mode}
+        saving={vm.saving}
+        initialData={vm.editing}
+        onOpenChange={vm.setOpen}
+        onSubmit={vm.onSubmit}
       />
     </div>
   );

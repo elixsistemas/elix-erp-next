@@ -1,21 +1,37 @@
 import { z } from "zod";
-const digits = (v: string) => v.replace(/\D/g, "");
 
-export const customerFormSchema = z.object({
-  name: z.string().trim().min(2, "Nome muito curto").max(140, "Nome muito longo"),
+export const CustomerUpsertSchema = z.object({
+  name: z.string().trim().min(2, "Nome obrigatório").max(160),
+  document: z.string().trim().min(3, "Documento obrigatório").max(20),
 
-  document: z
-    .string()
-    .trim()
-    .min(1, "CPF/CNPJ é obrigatório")
-    .transform((v) => digits(v))
-    .refine((v) => v.length === 11 || v.length === 14, "Informe um CPF (11) ou CNPJ (14) válido"),
+  person_type: z.enum(["PF", "PJ"]).optional().nullable(),
+  ie: z.string().trim().max(30).optional().nullable(),
 
-  email: z.string().trim().optional().nullable()
-    .transform((v) => (v ? v : null))
-    .refine((v) => v === null || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v), "E-mail inválido"),
+  email: z.string().trim().email("Email inválido").optional().nullable().or(z.literal("")),
+  phone: z.string().trim().max(40).optional().nullable(),
+  mobile: z.string().trim().max(40).optional().nullable(),
+  contact_name: z.string().trim().max(160).optional().nullable(),
 
-  phone: z.string().trim().optional().nullable().transform((v) => (v ? v : null)),
+  notes: z.string().trim().max(4000).optional().nullable(),
+
+  billing_address_line1: z.string().trim().max(120).optional().nullable(),
+  billing_address_line2: z.string().trim().max(120).optional().nullable(),
+  billing_district: z.string().trim().max(80).optional().nullable(),
+  billing_city: z.string().trim().max(80).optional().nullable(),
+  billing_state: z.string().trim().max(2).optional().nullable(),
+  billing_zip_code: z.string().trim().max(12).optional().nullable(),
+  billing_country: z.string().trim().max(2).optional().nullable(),
+
+  shipping_address_line1: z.string().trim().max(120).optional().nullable(),
+  shipping_address_line2: z.string().trim().max(120).optional().nullable(),
+  shipping_district: z.string().trim().max(80).optional().nullable(),
+  shipping_city: z.string().trim().max(80).optional().nullable(),
+  shipping_state: z.string().trim().max(2).optional().nullable(),
+  shipping_zip_code: z.string().trim().max(12).optional().nullable(),
+  shipping_country: z.string().trim().max(2).optional().nullable(),
 });
 
-export type CustomerFormValues = z.infer<typeof customerFormSchema>;
+export type CustomerUpsertForm = z.infer<typeof CustomerUpsertSchema>;
+
+export const customerFormSchema = CustomerUpsertSchema;
+export type CustomerFormValues = CustomerUpsertForm;

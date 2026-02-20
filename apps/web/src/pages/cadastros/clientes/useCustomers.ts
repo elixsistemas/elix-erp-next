@@ -1,7 +1,10 @@
 import * as React from "react";
-import type { Customer } from "./customers.types";
-import { listCustomers, createCustomer, updateCustomer, deleteCustomer } from "./customers.service";
-import type { CustomerFormValues } from "./customers.schema";
+import { toast } from "sonner";
+import type { Customer, CustomerCreate, CustomerUpdate } from "./customers.types";
+import { createCustomer, deleteCustomer, listCustomers, updateCustomer } from "./customers.service";
+import { CustomerUpsertSchema, type CustomerUpsertForm } from "./customers.schema";
+
+type Mode = "create" | "edit";
 
 export function useCustomers() {
   const [rows, setRows] = React.useState<Customer[]>([]);
@@ -9,105 +12,143 @@ export function useCustomers() {
   const [saving, setSaving] = React.useState(false);
 
   const [q, setQ] = React.useState("");
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<"create" | "edit">("create");
+  const [showInactive, setShowInactive] = React.useState(false);
+
+  const [open, setOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<Mode>("create");
   const [editing, setEditing] = React.useState<Customer | null>(null);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listCustomers(); // ✅ agora retorna Customer[]
-      setRows(Array.isArray(data) ? data : []);
+      const data = await listCustomers({
+        q: q.trim() ? q.trim() : undefined,
+        limit: 50,
+        active: showInactive ? undefined : 1,
+      });
+      setRows(data);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao listar clientes");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [q, showInactive]);
 
+  // debounce de busca
   React.useEffect(() => {
-    reload();
-  }, [reload]);
+    const t = setTimeout(() => {
+      void reload();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [q, showInactive, reload]);
 
-  function openCreate() {
+  function onCreate() {
     setMode("create");
     setEditing(null);
-    setDialogOpen(true);
+    setOpen(true);
   }
 
-  function openEdit(row: Customer) {
+  function onEdit(row: Customer) {
     setMode("edit");
     setEditing(row);
-    setDialogOpen(true);
+    setOpen(true);
   }
 
-  async function submit(values: CustomerFormValues) {
+  async function onRemove(row: Customer) {
+    if (!confirm(`Desativar o cliente "${row.name}"?`)) return;
+
+    try {
+      await deleteCustomer(row.id);
+      toast.success("Cliente desativado");
+      await reload();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao desativar cliente");
+    }
+  }
+
+  async function onSubmit(form: CustomerUpsertForm) {
+    const parsed = CustomerUpsertSchema.safeParse(form);
+    if (!parsed.success) {
+      toast.error(parsed.error.issues?.[0]?.message ?? "Validação falhou");
+      return;
+    }
+
     setSaving(true);
     try {
+      const payload = sanitizePayload(parsed.data);
+
       if (mode === "create") {
-        await createCustomer({
-          name: values.name,
-          document: values.document, // ✅ obrigatório
-          email: values.email ?? undefined,
-          phone: values.phone ?? undefined,
-        });
-      } else if (editing) {
-        await updateCustomer({
-          id: editing.id,
-          name: values.name,
-          document: values.document, // ✅ obrigatório
-          email: values.email ?? undefined,
-          phone: values.phone ?? undefined,
-        });
+        await createCustomer(payload as CustomerCreate);
+        toast.success("Cliente criado");
+      } else {
+        if (!editing) throw new Error("Edição inválida");
+        await updateCustomer(editing.id, payload as CustomerUpdate);
+        toast.success("Cliente atualizado");
       }
-      setDialogOpen(false);
+
+      setOpen(false);
+      setEditing(null);
       await reload();
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (msg.includes("DOCUMENT_ALREADY_EXISTS")) toast.error("Documento já cadastrado para esta empresa.");
+      else toast.error(e?.message ?? "Falha ao salvar cliente");
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(row: Customer) {
-    await deleteCustomer(row.id);
-    await reload();
-  }
-
-  // 🔎 filtro local por nome/document/email/phone
-  const filteredRows = React.useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return rows;
-
-    return rows.filter((r) => {
-      const name = (r.name ?? "").toLowerCase();
-      const doc = (r.document ?? "").toLowerCase();
-      const email = (r.email ?? "").toLowerCase();
-      const phone = (r.phone ?? "").toLowerCase();
-      return (
-        name.includes(term) ||
-        doc.includes(term) ||
-        email.includes(term) ||
-        phone.includes(term)
-      );
-    });
-  }, [rows, q]);
-
   return {
-    rows: filteredRows,
+    rows,
     loading,
     saving,
 
     q,
     setQ,
+    showInactive,
+    setShowInactive,
 
-    total: filteredRows.length,
-
-    dialogOpen,
-    setDialogOpen,
+    open,
+    setOpen,
     mode,
     editing,
 
-    openCreate,
-    openEdit,
-    submit,
-    remove,
     reload,
+    onCreate,
+    onEdit,
+    onRemove,
+    onSubmit,
+  };
+}
+
+function sanitizePayload(data: CustomerUpsertForm) {
+  // normaliza campos vazios para null (bom p/ SQL e JSON)
+  const toNull = (v: any) => (v === "" || typeof v === "undefined" ? null : v);
+
+  return {
+    ...data,
+    email: toNull(data.email),
+    phone: toNull(data.phone),
+    mobile: toNull(data.mobile),
+    ie: toNull(data.ie),
+    person_type: toNull(data.person_type),
+    contact_name: toNull(data.contact_name),
+    notes: toNull(data.notes),
+
+    billing_address_line1: toNull(data.billing_address_line1),
+    billing_address_line2: toNull(data.billing_address_line2),
+    billing_district: toNull(data.billing_district),
+    billing_city: toNull(data.billing_city),
+    billing_state: toNull(data.billing_state),
+    billing_zip_code: toNull(data.billing_zip_code),
+    billing_country: toNull(data.billing_country),
+
+    shipping_address_line1: toNull(data.shipping_address_line1),
+    shipping_address_line2: toNull(data.shipping_address_line2),
+    shipping_district: toNull(data.shipping_district),
+    shipping_city: toNull(data.shipping_city),
+    shipping_state: toNull(data.shipping_state),
+    shipping_zip_code: toNull(data.shipping_zip_code),
+    shipping_country: toNull(data.shipping_country),
   };
 }

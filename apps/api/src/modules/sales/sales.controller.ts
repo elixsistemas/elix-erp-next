@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import { IdParamSchema } from "../../config/params";
 import * as service from "./sales.service";
 import { issueFiscalTx, listFiscalBySale } from "./sales.fiscal.repository";
+import { CloseSaleBodySchema } from "./sales.schema";
 import { z } from "zod";
 
 const ListQuerySchema = z.object({
@@ -162,3 +163,57 @@ export async function update(req: FastifyRequest, rep: FastifyReply) {
   if (!updated) return rep.code(404).send({ message: "Sale not found" });
   return rep.send(updated);
 }
+
+
+export async function close(req: FastifyRequest, rep: FastifyReply) {
+  const companyId = req.auth!.companyId;
+  const { id } = IdParamSchema.parse(req.params);
+
+  const body = CloseSaleBodySchema.parse(req.body);
+
+  const result = await service.close(companyId, id, body);
+
+  if ("error" in result) {
+    const map: Record<string, [number, string]> = {
+      SALE_NOT_FOUND: [404, "Sale not found"],
+      SALE_ALREADY_CLOSED: [409, "Sale already closed"],
+      SALE_CANCELLED: [409, "Sale is cancelled"],
+      SALE_NOT_OPEN: [409, "Only open sales can be closed"],
+
+      PAYMENT_METHOD_REQUIRED: [409, "Payment method is required"],
+      PAYMENT_TERM_REQUIRED: [409, "Payment term is required"],
+
+      BANK_ACCOUNT_INVALID: [409, "Invalid bank account"],
+      INSTALLMENTS_INVALID: [400, "Invalid installments"],
+      RECEIVABLE_ALREADY_EXISTS: [409, "Receivable already exists for this sale"]
+    };
+
+    const [code, msg] = map[(result as any).error] ?? [400, "Cannot close sale"];
+    return rep.code(code).send({ message: msg });
+  }
+
+  return rep.send(result.data);
+}
+
+
+  export async function previewInstallments(req: FastifyRequest, rep: FastifyReply) {
+  const companyId = req.auth!.companyId;
+  const { id } = IdParamSchema.parse(req.params);
+
+  const result = await service.previewInstallments(companyId, id);
+
+  if ("error" in result) {
+    const map: Record<string, [number, string]> = {
+      SALE_NOT_FOUND: [404, "Sale not found"],
+      SALE_NOT_OPEN: [409, "Only open sales can generate installments preview"],
+      PAYMENT_METHOD_REQUIRED: [409, "Payment method is required"],
+      PAYMENT_TERM_REQUIRED: [409, "Payment term is required"],
+      PAYMENT_TERM_INVALID: [409, "Invalid payment term offsets"]
+    };
+    const [code, msg] = map[(result as any).error] ?? [400, "Cannot preview installments"];
+    return rep.code(code).send({ message: msg });
+  }
+
+  return rep.send(result.data);
+}
+

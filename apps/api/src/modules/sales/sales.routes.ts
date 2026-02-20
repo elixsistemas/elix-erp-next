@@ -43,4 +43,17 @@ export async function salesRoutes(app: FastifyInstance) {
     { preHandler: requireAuth },
     controller.update
   );
+
+  app.post<{ Params: IdParams }>(
+  "/sales/:id/close",
+  { preHandler: requireAuth },
+  controller.close
+);
+
+app.post<{ Params: IdParams }>(
+  "/sales/:id/installments/preview",
+  { preHandler: requireAuth },
+  controller.previewInstallments
+);
+
 }

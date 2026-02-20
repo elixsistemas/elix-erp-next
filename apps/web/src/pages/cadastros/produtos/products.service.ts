@@ -1,51 +1,39 @@
-import type { Product, ProductCreate, ProductUpdate } from "./products.types";
+import { api } from "@/shared/api/client";
+import type {
+  ListProductsQuery,
+  Product,
+  ProductCreate,
+  ProductStockResponse,
+  ProductUpdate,
+} from "./products.types";
 
-function getToken() {
-  return localStorage.getItem("token") || localStorage.getItem("access_token") || "";
+export async function listProducts(query: ListProductsQuery = {}) {
+  const qs = new URLSearchParams();
+  if (query.q?.trim()) qs.set("q", query.q.trim());
+  if (query.limit) qs.set("limit", String(query.limit));
+  if (typeof query.active === "number") qs.set("active", String(query.active));
+  if (query.kind) qs.set("kind", query.kind);
+
+  const url = `/products${qs.toString() ? `?${qs.toString()}` : ""}`;
+  return api<Product[]>(url);
 }
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const text = await res.text();
-  const ct = res.headers.get("content-type") ?? "";
-
-  if (!res.ok) throw new Error(`HTTP ${res.status} em ${url}: ${text.slice(0, 300)}`);
-  if (text && !ct.includes("application/json")) {
-    throw new Error(`Esperava JSON mas veio "${ct}" em ${url}. Início: ${text.slice(0, 80)}`);
-  }
-
-  return (text ? JSON.parse(text) : null) as T;
+export async function getProduct(id: number) {
+  return api<Product>(`/products/${id}`);
 }
 
-const base = "/api/products";
-
-export async function listProducts(): Promise<Product[]> {
-  const data = await api<unknown>(base);
-  if (Array.isArray(data)) return data as Product[];
-  if (data && typeof data === "object") return [data as Product];
-  return [];
+export async function createProduct(body: ProductCreate) {
+  return api<Product>(`/products`, { method: "POST", body });
 }
 
-export function createProduct(payload: ProductCreate) {
-  return api<Product>(base, { method: "POST", body: JSON.stringify(payload) });
-}
-
-export function updateProduct(payload: ProductUpdate) {
-  const { id, ...rest } = payload;
-  return api<Product>(`${base}/${id}`, { method: "PATCH", body: JSON.stringify(rest) });
+export async function updateProduct(id: number, body: ProductUpdate) {
+  return api<Product>(`/products/${id}`, { method: "PATCH", body });
 }
 
 export async function deleteProduct(id: number) {
-  await api<void>(`${base}/${id}`, { method: "DELETE" });
-  return { ok: true as const };
+  return api<void>(`/products/${id}`, { method: "DELETE" });
+}
+
+export async function getProductStock(id: number) {
+  return api<ProductStockResponse>(`/products/${id}/stock`);
 }

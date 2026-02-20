@@ -1,72 +1,79 @@
-// apps/web/src/pages/vendas/sales.service.ts
-function getToken() {
-  return localStorage.getItem("token") || localStorage.getItem("access_token") || "";
-}
+import { api } from "@/shared/api/client";
+import type {
+  BankAccountRow,
+  CloseSaleBody,
+  CloseSaleResult,
+  FiscalDoc,
+  PaymentTermRow,
+  PreviewInstallmentsResponse,
+  SaleDetails,
+  SaleRow,
+  SaleStatus,
+} from "./sales.types";
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+export async function listSales(params: {
+  from?: string;
+  to?: string;
+  customerId?: number;
+  status?: SaleStatus;
+}) {
+  const qs = new URLSearchParams();
+  if (params.from) qs.set("from", params.from);
+  if (params.to) qs.set("to", params.to);
+  if (params.customerId) qs.set("customerId", String(params.customerId));
+  if (params.status) qs.set("status", params.status);
 
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const text = await res.text();
-  const ct = res.headers.get("content-type") ?? "";
-
-  if (!res.ok) throw new Error(`HTTP ${res.status} em ${url}: ${text.slice(0, 300)}`);
-  if (!ct.includes("application/json"))
-    throw new Error(`Esperava JSON, veio "${ct}" em ${url}. Início: ${text.slice(0, 120)}`);
-
-  return JSON.parse(text) as T;
-}
-
-const base = "/api/sales";
-
-export type SaleRow = {
-  id: number;
-  customer_id: number;
-  quote_id: number | null;
-  status: string;
-  subtotal: number;
-  discount: number;
-  total: number;
-  notes: string | null;
-  created_at: string;
-};
-
-export type SaleItemRow = {
-  id: number;
-  sale_id: number;
-  product_id: number;
-  description: string;
-  quantity: number;
-  unit_price: number;
-  total: number;
-};
-
-export type SaleDetails = {
-  sale: SaleRow;
-  items: SaleItemRow[];
-};
-
-export function listSales(params?: { from?: string; to?: string; customerId?: number }) {
-  const usp = new URLSearchParams();
-  if (params?.from) usp.set("from", params.from);
-  if (params?.to) usp.set("to", params.to);
-  if (params?.customerId) usp.set("customerId", String(params.customerId));
-  const qs = usp.toString();
-  return api<SaleRow[]>(`${base}${qs ? `?${qs}` : ""}`);
+  const q = qs.toString();
+  return api<SaleRow[]>(`/sales${q ? `?${q}` : ""}`);
 }
 
 export function getSale(id: number) {
-  return api<SaleDetails>(`${base}/${id}`);
+  return api<SaleDetails>(`/sales/${id}`);
+}
+
+export function patchSale(
+  id: number,
+  body: Partial<{
+    paymentMethodId: number | null;
+    paymentTermId: number | null;
+    notes: string | null;
+    discount: number;
+  }>
+) {
+  return api<SaleRow>(`/sales/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(body),
+  });
 }
 
 export function listSaleFiscal(id: number) {
-  return api<{ documents: any[] }>(`${base}/${id}/fiscal`);
+  return api<{ documents: FiscalDoc[] }>(`/sales/${id}/fiscal`);
+}
+
+export function issueSaleFiscal(saleId: number, type: "NFE" | "NFSE" | "BOTH") {
+  return api(`/sales/${saleId}/fiscal/issue`, {
+    method: "POST",
+    body: JSON.stringify({ type }),
+  });
+}
+
+export function previewInstallments(saleId: number) {
+  return api<PreviewInstallmentsResponse>(`/sales/${saleId}/installments/preview`, {
+    method: "POST",
+  });
+}
+
+export function closeSale(saleId: number, body: CloseSaleBody) {
+  return api<CloseSaleResult>(`/sales/${saleId}/close`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function listBankAccounts() {
+  return api<BankAccountRow[]>(`/bank-accounts`);
+}
+
+export function listPaymentTerms() {
+  return api<PaymentTermRow[]>(`/payment-terms`);
 }

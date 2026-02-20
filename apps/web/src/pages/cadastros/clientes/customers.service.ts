@@ -1,57 +1,28 @@
-import type { Customer, CustomerCreate, CustomerUpdate } from "./customers.types";
+import { api } from "@/shared/api/client";
+import type { Customer, CustomerCreate, CustomerUpdate, ListCustomersQuery } from "./customers.types";
 
-// ajuste conforme onde você salva o token no login
-function getToken() {
-  return localStorage.getItem("token") || localStorage.getItem("access_token") || "";
+export async function listCustomers(query: ListCustomersQuery = {}) {
+  const qs = new URLSearchParams();
+  if (query.q?.trim()) qs.set("q", query.q.trim());
+  if (query.limit) qs.set("limit", String(query.limit));
+  if (typeof query.active === "number") qs.set("active", String(query.active));
+
+  const url = `/customers${qs.toString() ? `?${qs.toString()}` : ""}`;
+  return api<Customer[]>(url);
 }
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const text = await res.text();
-  const ct = res.headers.get("content-type") ?? "";
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} em ${url}: ${text.slice(0, 300)}`);
-  }
-
-  // DELETE 204 não tem body
-  if (res.status === 204) return undefined as T;
-
-  if (!ct.includes("application/json")) {
-    throw new Error(`Esperava JSON mas veio "${ct}" em ${url}. Início: ${text.slice(0, 80)}`);
-  }
-
-  return JSON.parse(text) as T;
+export async function getCustomer(id: number) {
+  return api<Customer>(`/customers/${id}`);
 }
 
-const base = "/api/customers";
-
-// ✅ backend retorna array
-export function listCustomers(): Promise<Customer[]> {
-  return api<Customer[]>(base);
+export async function createCustomer(body: CustomerCreate) {
+  return api<Customer>(`/customers`, { method: "POST", body });
 }
 
-export function createCustomer(payload: CustomerCreate): Promise<Customer> {
-  return api<Customer>(base, { method: "POST", body: JSON.stringify(payload) });
+export async function updateCustomer(id: number, body: CustomerUpdate) {
+  return api<Customer>(`/customers/${id}`, { method: "PATCH", body });
 }
 
-// ✅ backend é PATCH /customers/:id
-export function updateCustomer(payload: CustomerUpdate & { id: number }): Promise<Customer> {
-  const { id, ...rest } = payload;
-  return api<Customer>(`${base}/${id}`, { method: "PATCH", body: JSON.stringify(rest) });
-}
-
-export async function deleteCustomer(id: number): Promise<{ ok: true }> {
-  await api<void>(`${base}/${id}`, { method: "DELETE" });
-  return { ok: true };
+export async function deleteCustomer(id: number) {
+  return api<{ ok: true }>(`/customers/${id}`, { method: "DELETE" });
 }

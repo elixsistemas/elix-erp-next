@@ -1,20 +1,32 @@
 import * as repo from "./products.repository";
-import type { ProductCreate, ProductUpdate } from "./products.schema";
+import type { ProductCreate, ProductUpdate, ProductListQuery } from "./products.schema";
 
-export function list(companyId: number) {
-  return repo.listProducts(companyId);
+export function list(args: { companyId: number } & ProductListQuery) {
+  return repo.listProducts(args);
 }
 
 export function get(companyId: number, id: number) {
   return repo.getProduct(companyId, id);
 }
 
-export function create(companyId: number, data: ProductCreate) {
-  return repo.createProduct(companyId, data);
+export async function create(companyId: number, data: ProductCreate) {
+  // ✅ regra: service não controla estoque
+  const payload: ProductCreate = {
+    ...data,
+    track_inventory: data.kind === "service" ? false : (data.track_inventory ?? true),
+  };
+
+  return repo.createProduct(companyId, payload);
 }
 
-export function update(companyId: number, id: number, data: ProductUpdate) {
-  return repo.updateProduct(companyId, id, data);
+export async function update(companyId: number, id: number, data: ProductUpdate) {
+  // ✅ regra: se virar service, força track_inventory=0
+  const payload: ProductUpdate = {
+    ...data,
+    track_inventory: data.kind === "service" ? false : data.track_inventory,
+  };
+
+  return repo.updateProduct(companyId, id, payload);
 }
 
 export function deactivate(companyId: number, id: number) {

@@ -9,7 +9,6 @@ export async function list(req: FastifyRequest, rep: FastifyReply) {
   return rep.send(company ? [company] : []);
 }
 
-
 export async function get(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
   const company = await service.get(companyId);
@@ -17,9 +16,11 @@ export async function get(req: FastifyRequest, rep: FastifyReply) {
   return rep.send(company);
 }
 
-// ⚠️ opcional: só se você realmente quer criar empresas (admin)
-// caso contrário, REMOVA a rota/handler
+// ⚠️ opcional: só admin
 export async function create(req: FastifyRequest, rep: FastifyReply) {
+  if (req.auth?.role !== "ADMIN") {
+    return rep.code(403).send({ message: "Forbidden" });
+  }
   const payload = CompanyCreateSchema.parse(req.body);
   const created = await service.create(payload);
   return rep.code(201).send(created);
@@ -28,15 +29,24 @@ export async function create(req: FastifyRequest, rep: FastifyReply) {
 export async function update(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
   const payload = CompanyUpdateSchema.parse(req.body);
-  const updated = await service.update(companyId, payload);
-  if (!updated) return rep.code(404).send({ message: "Company not found" });
-  return rep.send(updated);
+
+  const r = await service.update(companyId, payload);
+
+  if ("error" in r) {
+    if (r.error === "BANK_ACCOUNT_INVALID") {
+      return rep.code(409).send({ message: "Invalid bank account for this company" });
+    }
+    return rep.code(404).send({ message: "Company not found" });
+  }
+
+  return rep.send(r.data);
 }
 
+// ⚠️ opcional: só admin
 export async function remove(req: FastifyRequest, rep: FastifyReply) {
   const { id } = IdParamSchema.parse(req.params);
 
-  if (id !== req.auth!.companyId && req.auth!.role !== "ADMIN") {
+  if (req.auth?.role !== "ADMIN") {
     return rep.code(403).send({ message: "Forbidden" });
   }
 

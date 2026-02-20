@@ -1,5 +1,196 @@
-import { getPool } from "../../config/db";
 import sql from "mssql";
+import { getPool } from "../../config/db";
+
+function utcTodayYYYYMMDD() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+export async function getSaleForClosing(companyId: number, saleId: number) {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input("company_id", companyId)
+    .input("sale_id", saleId)
+    .query(`
+      SELECT id, company_id, status, total, payment_method_id, payment_term_id
+      FROM dbo.sales
+      WHERE company_id=@company_id AND id=@sale_id
+    `);
+
+  return r.recordset[0] ?? null;
+}
+
+export async function closeSaleWithReceivablesTx(args: {
+  companyId: number;
+  saleId: number;
+  bankAccountId: number;
+  documentNo: string | null;
+  note: string | null;
+  installments: Array<{ dueDate: string; amount: number }>;
+}) {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+
+  try {
+    // 1) trava venda
+    const s = await new sql.Request(tx)
+      .input("company_id", args.companyId)
+      .input("sale_id", args.saleId)
+      .query(`
+        SELECT id, customer_id, status, total, payment_method_id, payment_term_id
+        FROM dbo.sales WITH (UPDLOCK, ROWLOCK)
+        WHERE company_id=@company_id AND id=@sale_id
+      `);
+
+    const sale = s.recordset[0] ?? null;
+    if (!sale) {
+      await tx.rollback();
+      return { error: "SALE_NOT_FOUND" as const };
+    }
+
+    const status = String(sale.status ?? "").toLowerCase();
+
+    if (status === "cancelled") {
+      await tx.rollback();
+      return { error: "SALE_CANCELLED" as const };
+    }
+    if (status === "closed") {
+      await tx.rollback();
+      return { error: "SALE_ALREADY_CLOSED" as const };
+    }
+    if (status !== "open") {
+      await tx.rollback();
+      return { error: "SALE_NOT_OPEN" as const };
+    }
+
+    if (!sale.payment_method_id) {
+      await tx.rollback();
+      return { error: "PAYMENT_METHOD_REQUIRED" as const };
+    }
+    if (!sale.payment_term_id) {
+      await tx.rollback();
+      return { error: "PAYMENT_TERM_REQUIRED" as const };
+    }
+
+    // 2) valida conta bancária (pertence à empresa e está ativa)
+    const ba = await new sql.Request(tx)
+      .input("company_id", args.companyId)
+      .input("id", args.bankAccountId)
+      .query(`
+        SELECT TOP 1 id
+        FROM dbo.bank_accounts
+        WHERE company_id=@company_id AND id=@id AND active=1
+      `);
+
+    if (!ba.recordset[0]) {
+      await tx.rollback();
+      return { error: "BANK_ACCOUNT_INVALID" as const };
+    }
+
+    // 3) valida parcelas
+    if (!args.installments?.length) {
+      await tx.rollback();
+      return { error: "INSTALLMENTS_INVALID" as const };
+    }
+
+    function toCents(n: number) {
+      return Math.round(Number(n) * 100);
+    }
+
+    const saleTotalCents = toCents(Number(sale.total));
+    const sumCents = args.installments.reduce((acc, it) => acc + toCents(Number(it.amount)), 0);
+
+    if (sumCents !== saleTotalCents) {
+      await tx.rollback();
+      return { error: "INSTALLMENTS_INVALID" as const };
+    }
+
+    if (args.installments.some(it => Number(it.amount) <= 0)) {
+      await tx.rollback();
+      return { error: "INSTALLMENTS_INVALID" as const };
+    }
+
+
+    const exists = await new sql.Request(tx)
+      .input("company_id", args.companyId)
+      .input("sale_id", args.saleId)
+      .query(`
+        SELECT TOP 1 id
+        FROM dbo.accounts_receivable WITH (UPDLOCK, HOLDLOCK)
+        WHERE company_id=@company_id AND sale_id=@sale_id
+      `);
+
+    if (exists.recordset[0]) {
+      await tx.rollback();
+      return { error: "RECEIVABLE_ALREADY_EXISTS" as const };
+    }
+
+
+    // 4) cria N títulos (1 venda → N linhas)
+    const issueDate = utcTodayYYYYMMDD();
+    const totalInstallments = args.installments.length;
+
+    for (let i = 0; i < totalInstallments; i++) {
+      const it = args.installments[i];
+
+      await new sql.Request(tx)
+        .input("company_id", args.companyId)
+        .input("sale_id", args.saleId)
+        .input("customer_id", Number(sale.customer_id))
+        .input("payment_method_id", Number(sale.payment_method_id))
+        .input("payment_term_id", Number(sale.payment_term_id))
+        .input("installment_number", i + 1)
+        .input("total_installments", totalInstallments)
+        .input("issue_date", issueDate)
+        .input("due_date", it.dueDate)
+        .input("amount", Number(it.amount))
+        .input("status", "open")
+        .input("bank_account_id", args.bankAccountId)
+        .input("document_no", args.documentNo)
+        .input("note", args.note)
+        .query(`
+          INSERT INTO dbo.accounts_receivable
+            (company_id, sale_id, customer_id, payment_method_id, payment_term_id,
+             installment_number, total_installments, issue_date, due_date, amount, status,
+             bank_account_id, document_no, note, created_at)
+          VALUES
+            (@company_id, @sale_id, @customer_id, @payment_method_id, @payment_term_id,
+             @installment_number, @total_installments, @issue_date, @due_date, @amount, @status,
+             @bank_account_id, @document_no, @note, SYSUTCDATETIME())
+        `);
+    }
+
+    // 5) fecha venda
+    const u = await new sql.Request(tx)
+      .input("company_id", args.companyId)
+      .input("sale_id", args.saleId)
+      .query(`
+        UPDATE dbo.sales
+        SET status='closed'
+        OUTPUT INSERTED.id, INSERTED.status
+        WHERE company_id=@company_id AND id=@sale_id AND status='open'
+      `);
+
+    await tx.commit();
+    return { data: { sale: u.recordset[0], receivablesCreated: totalInstallments } };
+    } catch (e: any) {
+    const msg = String(e?.message ?? "");
+
+    // 2627 = Violation of PRIMARY KEY/UNIQUE constraint
+    // 2601 = Cannot insert duplicate key row in object with unique index
+    if (e?.number === 2627 || e?.number === 2601 || msg.includes("UX_ar_sale_installment")) {
+      await tx.rollback();
+      return { error: "RECEIVABLE_ALREADY_EXISTS" as const };
+    }
+
+    await tx.rollback();
+    throw e;
+  }
+}
 
 type QuoteRow = {
   id: number;
@@ -375,6 +566,62 @@ export async function updateSale(args: {
     `);
 
   return r.recordset[0] ?? null;
+}
+
+export async function closeSaleTx(args: { companyId: number; saleId: number }) {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+
+  try {
+    const s = await new sql.Request(tx)
+      .input("company_id", args.companyId)
+      .input("sale_id", args.saleId)
+      .query(`
+        SELECT id, status
+        FROM sales WITH (UPDLOCK, ROWLOCK)
+        WHERE company_id=@company_id AND id=@sale_id
+      `);
+
+    const sale = s.recordset[0] ?? null;
+    if (!sale) {
+      await tx.rollback();
+      return { error: "SALE_NOT_FOUND" as const };
+    }
+
+    const status = String(sale.status ?? "").toLowerCase();
+
+    if (status === "cancelled") {
+      await tx.rollback();
+      return { error: "SALE_CANCELLED" as const };
+    }
+
+    if (status === "closed") {
+      await tx.rollback();
+      return { error: "SALE_ALREADY_CLOSED" as const };
+    }
+
+    if (status !== "open") {
+      await tx.rollback();
+      return { error: "SALE_NOT_OPEN" as const };
+    }
+
+    const u = await new sql.Request(tx)
+      .input("company_id", args.companyId)
+      .input("sale_id", args.saleId)
+      .query(`
+        UPDATE sales
+        SET status='closed'
+        OUTPUT INSERTED.id, INSERTED.status
+        WHERE company_id=@company_id AND id=@sale_id AND status='open'
+      `);
+
+    await tx.commit();
+    return { data: u.recordset[0] };
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
 }
 
 

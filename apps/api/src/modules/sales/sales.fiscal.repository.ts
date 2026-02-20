@@ -112,6 +112,7 @@ export async function issueFiscalTx(args: {
     throw e;
   }
 }
+
 export async function listFiscalBySale(args: { companyId: number; saleId: number }) {
   const pool = await getPool();
 
@@ -164,3 +165,4 @@ export async function listFiscalBySale(args: { companyId: number; saleId: number
     }))
   };
 }
+

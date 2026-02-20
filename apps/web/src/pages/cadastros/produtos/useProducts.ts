@@ -1,7 +1,10 @@
 import * as React from "react";
-import type { Product } from "./products.types";
-import { listProducts, createProduct, updateProduct, deleteProduct } from "./products.service";
-import type { ProductFormValues } from "./products.schema";
+import { toast } from "sonner";
+import type { Product, ProductCreate, ProductUpdate, ProductKind } from "./products.types";
+import { createProduct, deleteProduct, listProducts, updateProduct } from "./products.service";
+import { ProductUpsertSchema, type ProductUpsertForm } from "./products.schema";
+
+type Mode = "create" | "edit";
 
 export function useProducts() {
   const [rows, setRows] = React.useState<Product[]>([]);
@@ -9,99 +12,147 @@ export function useProducts() {
   const [saving, setSaving] = React.useState(false);
 
   const [q, setQ] = React.useState("");
-  const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [mode, setMode] = React.useState<"create" | "edit">("create");
+  const [showInactive, setShowInactive] = React.useState(false);
+  const [kind, setKind] = React.useState<ProductKind | "all">("all");
+
+  const [open, setOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<Mode>("create");
   const [editing, setEditing] = React.useState<Product | null>(null);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
     try {
-      const data = await listProducts();
-      setRows(Array.isArray(data) ? data : []);
+      const data = await listProducts({
+        q: q.trim() ? q.trim() : undefined,
+        limit: 50,
+        active: showInactive ? undefined : 1,
+        kind: kind === "all" ? undefined : kind,
+      });
+      setRows(data);
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao listar produtos");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [q, showInactive, kind]);
 
   React.useEffect(() => {
-    reload();
-  }, [reload]);
+    const t = setTimeout(() => void reload(), 350);
+    return () => clearTimeout(t);
+  }, [q, showInactive, kind, reload]);
 
-  function openCreate() {
+  function onCreate() {
     setMode("create");
     setEditing(null);
-    setDialogOpen(true);
+    setOpen(true);
   }
 
-  function openEdit(row: Product) {
+  function onEdit(row: Product) {
     setMode("edit");
     setEditing(row);
-    setDialogOpen(true);
+    setOpen(true);
   }
 
-  async function submit(values: ProductFormValues) {
+  async function onRemove(row: Product) {
+    if (!confirm(`Desativar o produto "${row.name}"?`)) return;
+
+    try {
+      await deleteProduct(row.id);
+      toast.success("Produto desativado");
+      await reload();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Falha ao desativar produto");
+    }
+  }
+
+  async function onSubmit(form: ProductUpsertForm) {
+    const parsed = ProductUpsertSchema.safeParse(form);
+    if (!parsed.success) {
+      toast.error(parsed.error.issues?.[0]?.message ?? "Validação falhou");
+      return;
+    }
+
     setSaving(true);
     try {
-      const payload = {
-        name: values.name,
-        sku: values.sku?.trim() || undefined,
-        ncm: values.ncm?.trim() || undefined,
-        ean: values.ean?.trim() || undefined,
-        price: values.price ?? 0,
-        cost: values.cost ?? 0,
-      };
+      const payload = sanitizePayload(parsed.data);
 
       if (mode === "create") {
-        await createProduct(payload);
-      } else if (editing) {
-        await updateProduct({ id: editing.id, ...payload });
+        await createProduct(payload as ProductCreate);
+        toast.success("Produto criado");
+      } else {
+        if (!editing) throw new Error("Edição inválida");
+        await updateProduct(editing.id, payload as ProductUpdate);
+        toast.success("Produto atualizado");
       }
 
-      setDialogOpen(false);
+      setOpen(false);
+      setEditing(null);
       await reload();
+    } catch (e: any) {
+      const msg = String(e?.message ?? "");
+      if (msg.includes("SKU_ALREADY_EXISTS")) toast.error("SKU já existe para esta empresa.");
+      else if (msg.includes("EAN_ALREADY_EXISTS")) toast.error("EAN já existe para esta empresa.");
+      else toast.error(e?.message ?? "Falha ao salvar produto");
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(row: Product) {
-    await deleteProduct(row.id);
-    await reload();
-  }
-
-  const filteredRows = React.useMemo(() => {
-    const term = q.trim().toLowerCase();
-    if (!term) return rows;
-
-    return rows.filter((r) => {
-      const name = (r.name ?? "").toLowerCase();
-      const sku = (r.sku ?? "").toLowerCase();
-      const ncm = (r.ncm ?? "").toLowerCase();
-      const ean = (r.ean ?? "").toLowerCase();
-      return (
-        name.includes(term) ||
-        sku.includes(term) ||
-        ncm.includes(term) ||
-        ean.includes(term)
-      );
-    });
-  }, [rows, q]);
-
   return {
-    rows: filteredRows,
+    rows,
     loading,
     saving,
+
     q,
     setQ,
-    total: filteredRows.length,
-    dialogOpen,
-    setDialogOpen,
+
+    showInactive,
+    setShowInactive,
+
+    kind,
+    setKind,
+
+    open,
+    setOpen,
+
     mode,
     editing,
-    openCreate,
-    openEdit,
-    submit,
-    remove,
+
     reload,
+    onCreate,
+    onEdit,
+    onRemove,
+    onSubmit,
+  };
+}
+
+function sanitizePayload(data: ProductUpsertForm) {
+  const toNull = (v: any) => (v === "" || typeof v === "undefined" ? null : v);
+
+  const kind = data.kind ?? "product";
+  const trackInventory = kind === "service" ? false : Boolean(data.track_inventory ?? true);
+
+  return {
+    ...data,
+    kind,
+    track_inventory: trackInventory,
+
+    sku: toNull(data.sku),
+    description: toNull(data.description),
+    uom: toNull(data.uom),
+
+    ncm: toNull(data.ncm),
+    ean: toNull(data.ean),
+    cest: toNull(data.cest),
+    fiscal_json: toNull(data.fiscal_json),
+
+    image_url: toNull(data.image_url),
+
+    weight_kg: typeof data.weight_kg === "number" ? data.weight_kg : null,
+    width_cm: typeof data.width_cm === "number" ? data.width_cm : null,
+    height_cm: typeof data.height_cm === "number" ? data.height_cm : null,
+    length_cm: typeof data.length_cm === "number" ? data.length_cm : null,
+
+    active: typeof data.active === "boolean" ? data.active : true,
   };
 }
