@@ -1,37 +1,52 @@
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../config/prehandlers";
 import * as controller from "./receivables.controller";
+import { requireAuth, requirePermission } from "../../config/prehandlers";
 
 type IdParams = { id: string };
 
 export async function receivablesRoutes(app: FastifyInstance) {
   app.post<{ Params: IdParams }>(
     "/receivables/from-sale/:id",
-    { preHandler: requireAuth },
+    {
+      preHandler: [
+        requireAuth,
+        requirePermission("receivables.create"),
+      ],
+    },
     controller.fromSale
   );
 
   app.get(
     "/receivables",
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requirePermission("receivables.read")] },
     controller.list
   );
 
   app.get<{ Params: IdParams }>(
     "/receivables/:id",
-    { preHandler: requireAuth },
+    { preHandler: [requireAuth, requirePermission("receivables.read")] },
     controller.get
   );
 
   app.post<{ Params: IdParams }>(
     "/receivables/:id/pay",
-    { preHandler: requireAuth },
+    {
+      preHandler: [
+        requireAuth,
+        requirePermission("receivables.update"),
+      ],
+    },
     controller.pay
   );
 
   app.post<{ Params: IdParams }>(
     "/receivables/:id/cancel",
-    { preHandler: requireAuth },
+    {
+      preHandler: [
+        requireAuth,
+        requirePermission("receivables.update"),
+      ],
+    },
     controller.cancel
   );
 }

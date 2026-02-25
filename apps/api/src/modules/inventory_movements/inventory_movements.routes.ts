@@ -1,6 +1,5 @@
-// apps/api/src/modules/inventory_movements/inventory_movements.routes.ts
 import type { FastifyInstance } from "fastify";
-import { requireAuth, requireRole } from "../../config/prehandlers";
+import { requireAuth, requirePermission } from "../../config/prehandlers";
 import { InventoryMovementsRepository } from "./inventory_movements.repository";
 import { InventoryMovementsService } from "./inventory_movements.service";
 import { InventoryMovementsController } from "./inventory_movements.controller";
@@ -17,13 +16,18 @@ export async function inventoryMovementsRoutes(app: FastifyInstance) {
 
   app.post<{ Body: CreateBody }>(
     "/inventory/movements",
-    { preHandler: [requireAuth, requireRole("ADMIN")] },
+    {
+      preHandler: [
+        requireAuth,
+        requirePermission("inventory_movements.create"),
+      ],
+    },
     controller.create
   );
 
   app.get<{ Querystring: ListQuery }>(
     "/inventory/movements",
-    { preHandler: [requireAuth] },
+    { preHandler: [requireAuth, requirePermission("inventory_movements.read")] },
     controller.list
   );
 }

@@ -25,30 +25,7 @@ const FALLBACK: BrandingDTO = {
   show_powered_by: true,
 };
 
-export async function getBrandingBySlug(slug: string): Promise<BrandingDTO> {
-  const pool = await getPool();
-
-  const result = await pool
-    .request()
-    .input("slug", sql.NVarChar(80), slug)
-    .query(`
-      SELECT TOP 1
-        slug,
-        display_name,
-        logo_url,
-        logo_dark_url,
-        favicon_url,
-        primary_color,
-        secondary_color,
-        use_default_logo,
-        show_powered_by
-      FROM dbo.company_branding
-      WHERE slug = @slug;
-    `);
-
-  const row = result.recordset?.[0];
-  if (!row) return FALLBACK;
-
+function mapRow(row: any): BrandingDTO {
   return {
     slug: row.slug,
     display_name: row.display_name,
@@ -62,6 +39,24 @@ export async function getBrandingBySlug(slug: string): Promise<BrandingDTO> {
   };
 }
 
+export async function getBrandingBySlug(slug: string): Promise<BrandingDTO> {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("slug", sql.NVarChar(160), slug)
+    .query(`
+      SELECT TOP 1
+        slug, display_name, logo_url, logo_dark_url, favicon_url,
+        primary_color, secondary_color, use_default_logo, show_powered_by
+      FROM dbo.company_branding
+      WHERE slug = @slug;
+    `);
+
+  const row = result.recordset?.[0];
+  return row ? mapRow(row) : FALLBACK;
+}
+
 export async function getBrandingByCompanyId(companyId: number): Promise<BrandingDTO> {
   const pool = await getPool();
 
@@ -70,31 +65,12 @@ export async function getBrandingByCompanyId(companyId: number): Promise<Brandin
     .input("companyId", sql.Int, companyId)
     .query(`
       SELECT TOP 1
-        slug,
-        display_name,
-        logo_url,
-        logo_dark_url,
-        favicon_url,
-        primary_color,
-        secondary_color,
-        use_default_logo,
-        show_powered_by
+        slug, display_name, logo_url, logo_dark_url, favicon_url,
+        primary_color, secondary_color, use_default_logo, show_powered_by
       FROM dbo.company_branding
-      WHERE company_id = @companyId;
+      WHERE company_id_int = @companyId;
     `);
 
   const row = result.recordset?.[0];
-  if (!row) return FALLBACK;
-
-  return {
-    slug: row.slug,
-    display_name: row.display_name,
-    logo_url: row.logo_url ?? null,
-    logo_dark_url: row.logo_dark_url ?? null,
-    favicon_url: row.favicon_url ?? null,
-    primary_color: row.primary_color,
-    secondary_color: row.secondary_color,
-    use_default_logo: Boolean(row.use_default_logo),
-    show_powered_by: Boolean(row.show_powered_by),
-  };
+  return row ? mapRow(row) : FALLBACK;
 }

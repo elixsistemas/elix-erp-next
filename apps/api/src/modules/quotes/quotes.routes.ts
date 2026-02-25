@@ -1,20 +1,43 @@
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../config/prehandlers";
+import { requireAuth, requirePermission } from "../../config/prehandlers";
 import { list, get, create, update, approve, cancel } from "./quotes.controller";
 
 type IdParams = { id: string };
 
 export async function quotesRoutes(app: FastifyInstance) {
-  app.get("/quotes", { preHandler: requireAuth }, list);
+  app.get(
+    "/quotes",
+    { preHandler: [requireAuth, requirePermission("quotes.read")] },
+    list
+  );
 
-  app.get<{ Params: IdParams }>("/quotes/:id", { preHandler: requireAuth }, get);
+  app.get<{ Params: IdParams }>(
+    "/quotes/:id",
+    { preHandler: [requireAuth, requirePermission("quotes.read")] },
+    get
+  );
 
-  app.post("/quotes", { preHandler: requireAuth }, create);
+  app.post(
+    "/quotes",
+    { preHandler: [requireAuth, requirePermission("quotes.create")] },
+    create
+  );
 
-  app.patch<{ Params: IdParams }>("/quotes/:id", { preHandler: requireAuth }, update);
+  app.patch<{ Params: IdParams }>(
+    "/quotes/:id",
+    { preHandler: [requireAuth, requirePermission("quotes.update")] },
+    update
+  );
 
-  app.post<{ Params: IdParams }>("/quotes/:id/approve", { preHandler: requireAuth }, approve);
-  app.post<{ Params: IdParams }>("/quotes/:id/cancel", { preHandler: requireAuth }, cancel);
+  app.post<{ Params: IdParams }>(
+    "/quotes/:id/approve",
+    { preHandler: [requireAuth, requirePermission("quotes.approve")] },
+    approve
+  );
+
+  app.post<{ Params: IdParams }>(
+    "/quotes/:id/cancel",
+    { preHandler: [requireAuth, requirePermission("quotes.cancel")] },
+    cancel
+  );
 }
-
-

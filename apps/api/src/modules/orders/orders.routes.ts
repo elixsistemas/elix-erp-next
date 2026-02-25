@@ -1,36 +1,49 @@
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../config/prehandlers";
-import * as controller from "./orders.controller";
+import { requireAuth, requirePermission } from "../../config/prehandlers";
+import { list, get, create, update, confirm, cancel, createFromQuote } from "./orders.controller";
 
 type IdParams = { id: string };
 
 export async function ordersRoutes(app: FastifyInstance) {
-  app.get("/orders", { preHandler: requireAuth }, controller.list);
+  app.get(
+    "/orders",
+    { preHandler: [requireAuth, requirePermission("orders.read")] },
+    list
+  );
 
   app.get<{ Params: IdParams }>(
     "/orders/:id",
-    { preHandler: requireAuth },
-    controller.get
+    { preHandler: [requireAuth, requirePermission("orders.read")] },
+    get
   );
 
-  app.post("/orders", { preHandler: requireAuth }, controller.create);
+  app.post(
+    "/orders",
+    { preHandler: [requireAuth, requirePermission("orders.create")] },
+    create
+  );
 
   app.patch<{ Params: IdParams }>(
     "/orders/:id",
-    { preHandler: requireAuth },
-    controller.update
+    { preHandler: [requireAuth, requirePermission("orders.update")] },
+    update
+  );
+
+  app.post<{ Params: IdParams }>(
+    "/orders/:id/confirm",
+    { preHandler: [requireAuth, requirePermission("orders.confirm")] },
+    confirm
   );
 
   app.post<{ Params: IdParams }>(
     "/orders/:id/cancel",
-    { preHandler: requireAuth },
-    controller.cancel
+    { preHandler: [requireAuth, requirePermission("orders.cancel")] },
+    cancel
   );
 
-  // ✅ Marcha 1: Faturar pedido -> gera SALE (sem nota)
   app.post<{ Params: IdParams }>(
-    "/orders/:id/bill",
-    { preHandler: requireAuth },
-    controller.bill
+    "/orders/from-quote/:id",
+    { preHandler: [requireAuth, requirePermission("orders.create")] }, // conversão cria pedido
+    createFromQuote
   );
 }

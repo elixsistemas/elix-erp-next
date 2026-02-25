@@ -8,6 +8,9 @@ export async function authRoutes(app: FastifyInstance) {
   app.post("/auth/prelogin", controller.prelogin);
   app.post("/auth/login", controller.login);
 
-  // protegida
+  // protegida (canônica)
   app.get("/auth/me", { preHandler: requireAuth }, controller.me);
+
+  // alias (mantém compatibilidade, sem duplicar payload)
+  app.get("/me", { preHandler: requireAuth }, controller.me);
 }

@@ -1,12 +1,8 @@
 import { z } from "zod";
 
-/**
- * Querystring:
- * /branding?company=elix
- */
 export const brandingQuerySchema = z.object({
-  company: z.string().trim().min(1).max(80).optional(), // slug (opcional)
-  companyId: z.coerce.number().int().positive().optional(), // id (opcional)
+  company: z.string().optional(),
+  companyId: z.coerce.number().int().positive().optional(),
 });
 
 export type BrandingQuery = z.infer<typeof brandingQuerySchema>;

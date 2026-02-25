@@ -4,7 +4,7 @@ import { env } from "./env";
 export type AuthUser = {
   userId: number;
   companyId: number;
-  role: string;
+  roles: string[]; // compatível com multi-role
 };
 
 export function verifyAuth(header?: string): AuthUser | null {
@@ -14,11 +14,20 @@ export function verifyAuth(header?: string): AuthUser | null {
 
   try {
     const payload = jwt.verify(token, env.JWT_SECRET) as any;
-    return {
-      userId: Number(payload.sub),
-      companyId: Number(payload.companyId),
-      role: String(payload.role ?? "user")
-    };
+
+    const rolesRaw = Array.isArray(payload.roles)
+      ? payload.roles
+      : payload.role
+        ? [payload.role]
+        : [];
+
+    const roles = rolesRaw.map((r: any) => String(r).toLowerCase()).filter(Boolean);
+
+    const userId = Number(payload.sub);
+    const companyId = Number(payload.companyId);
+    if (!Number.isFinite(userId) || !Number.isFinite(companyId)) return null;
+
+    return { userId, companyId, roles: roles.length ? roles : ["user"] };
   } catch {
     return null;
   }

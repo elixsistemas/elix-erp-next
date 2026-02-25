@@ -1,170 +1,70 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { z } from "zod";
+import { OrderCreateSchema, OrderListQuerySchema, OrderUpdateSchema } from "./orders.schema";
 import * as service from "./orders.service";
 
-// Params
-const IdParamSchema = z.object({ id: z.string() });
+type IdParams  = { id: string };
+type QidParams = { id: string };   // quoteId na rota from-quote
 
-// Query list
-const ListQuerySchema = z.object({
-  from: z.string().optional(),
-  to: z.string().optional(),
-  customerId: z.coerce.number().int().positive().optional(),
-  status: z.string().optional(),
-});
+function hasError(x: unknown): x is { error: string } {
+  return typeof x === "object" && x !== null && "error" in x;
+}
 
-// Body create
-const CreateOrderSchema = z.object({
-  customerId: z.coerce.number().int().positive(),
-  quoteId: z.coerce.number().int().positive().optional().nullable(),
-  notes: z.string().max(2000).optional().nullable(),
-
-  status: z.string().optional(), // se quiser fixar sempre draft, pode remover
-  subtotal: z.coerce.number(),
-  discount: z.coerce.number().min(0),
-  total: z.coerce.number(),
-
-  items: z.array(
-    z.object({
-      productId: z.coerce.number().int().positive(),
-      kind: z.enum(["product", "service"]),
-      description: z.string().min(1).max(200),
-      quantity: z.coerce.number().positive(),
-      unitPrice: z.coerce.number().min(0),
-      total: z.coerce.number().min(0),
-    })
-  ).min(1),
-});
-
-// Body update
-const UpdateOrderSchema = z.object({
-  status: z.string().optional(),
-  notes: z.string().max(2000).optional().nullable(),
-});
-
-function companyIdFromReq(req: any) {
-  // ajuste aqui se no seu projeto for req.user / req.auth / req.session etc.
-  return Number(req.auth?.companyId);
+function mapError(rep: FastifyReply, code: string) {
+  const map: Record<string, [number, string]> = {
+    ORDER_NOT_FOUND:                [404, "Pedido não encontrado"],
+    CUSTOMER_NOT_FOUND:             [404, "Cliente não encontrado nesta empresa"],
+    PRODUCT_NOT_FOUND:              [404, "Um ou mais produtos não encontrados nesta empresa"],
+    ORDER_LOCKED:                   [409, "Pedido não pode ser editado (status ≠ draft)"],
+    INVALID_STATUS:                 [409, "Transição de status inválida"],
+    QUOTE_NOT_FOUND_OR_NOT_APPROVED:[409, "Orçamento não encontrado ou não aprovado"],
+  };
+  const [status, message] = map[code] ?? [400, "Erro na requisição"];
+  return rep.code(status).send({ error: code, message });
 }
 
 export async function list(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = companyIdFromReq(req);
-  const q = ListQuerySchema.parse(req.query);
-
-  const rows = await service.list({
-    companyId,
-    from: q.from,
-    to: q.to,
-    customerId: q.customerId,
-    status: q.status,
-  });
-
-  return rep.send(rows);
+  const query  = OrderListQuerySchema.parse(req.query);
+  const result = await service.list(req.auth!.companyId, query);
+  return rep.send(result.data);
 }
 
-export async function get(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = companyIdFromReq(req);
-  const { id } = IdParamSchema.parse(req.params);
-  const orderId = Number(id);
-
-  const data = await service.get(companyId, orderId);
-  if (!data) return rep.code(404).send({ message: "Pedido não encontrado." });
-
-  return rep.send(data);
+export async function get(req: FastifyRequest<{ Params: IdParams }>, rep: FastifyReply) {
+  const result = await service.get(req.auth!.companyId, Number(req.params.id));
+  if (hasError(result)) return mapError(rep, result.error);
+  return rep.send(result.data);
 }
 
 export async function create(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = companyIdFromReq(req);
-  const body = CreateOrderSchema.parse(req.body);
-
-  const res = await service.create({
-    companyId,
-    quoteId: body.quoteId ?? null,
-    customerId: body.customerId,
-    status: body.status ?? "draft",
-    subtotal: body.subtotal,
-    discount: body.discount,
-    total: body.total,
-    notes: body.notes ?? null,
-    items: body.items.map((it) => ({
-      productId: it.productId,
-      kind: it.kind,
-      description: it.description,
-      quantity: it.quantity,
-      unitPrice: it.unitPrice,
-      total: it.total,
-    })),
-  });
-
-  if ("error" in res) {
-    if (res.error === "QUOTE_NOT_FOUND") {
-      return rep.code(404).send({ message: "Orçamento (quote) não encontrado para esta empresa." });
-    }
-    return rep.code(400).send({ message: "Não foi possível criar o pedido." });
-  }
-
-  return rep.code(201).send(res.data);
+  const body   = OrderCreateSchema.parse(req.body);
+  const result = await service.create(req.auth!.companyId, body);
+  if (hasError(result)) return mapError(rep, result.error);
+  return rep.code(201).send(result.data);
 }
 
-export async function update(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = companyIdFromReq(req);
-  const { id } = IdParamSchema.parse(req.params);
-  const orderId = Number(id);
-  const body = UpdateOrderSchema.parse(req.body);
-
-  const res = await service.update({
-    companyId,
-    orderId,
-    status: body.status,
-    notes: body.notes ?? null,
-  });
-
-  if ("error" in res) {
-    if (res.error === "ORDER_NOT_FOUND") {
-      return rep.code(404).send({ message: "Pedido não encontrado." });
-    }
-    return rep.code(400).send({ message: "Não foi possível atualizar o pedido." });
-  }
-
-  return rep.send(res.data);
+export async function update(req: FastifyRequest<{ Params: IdParams }>, rep: FastifyReply) {
+  const body   = OrderUpdateSchema.parse(req.body);
+  const result = await service.update(req.auth!.companyId, Number(req.params.id), body);
+  if (hasError(result)) return mapError(rep, result.error);
+  return rep.send(result.data);
 }
 
-export async function cancel(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = companyIdFromReq(req);
-  const { id } = IdParamSchema.parse(req.params);
-  const orderId = Number(id);
-
-  const res = await service.cancel({ companyId, orderId });
-
-  if ("error" in res) {
-    // seu repo: AND status <> 'billed' => cancela somente se não faturado
-    if (res.error === "ORDER_NOT_FOUND_OR_BILLED") {
-      return rep.code(409).send({ message: "Pedido não encontrado ou já faturado." });
-    }
-    return rep.code(400).send({ message: "Não foi possível cancelar o pedido." });
-  }
-
-  return rep.send(res.data);
+export async function confirm(req: FastifyRequest<{ Params: IdParams }>, rep: FastifyReply) {
+  const result = await service.confirm(req.auth!.companyId, Number(req.params.id));
+  if (hasError(result)) return mapError(rep, result.error);
+  return rep.send(result.data);
 }
 
-export async function bill(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = companyIdFromReq(req);
-  const { id } = IdParamSchema.parse(req.params);
-  const orderId = Number(id);
+export async function cancel(req: FastifyRequest<{ Params: IdParams }>, rep: FastifyReply) {
+  const result = await service.cancel(req.auth!.companyId, Number(req.params.id));
+  if (hasError(result)) return mapError(rep, result.error);
+  return rep.send(result.data);
+}
 
-  const res = await service.billToSale({ companyId, orderId });
-
-  if ("error" in res) {
-    if (res.error === "ORDER_NOT_FOUND") return rep.code(404).send({ message: "Pedido não encontrado." });
-    if (res.error === "ORDER_CANCELLED") return rep.code(409).send({ message: "Pedido cancelado." });
-    if (res.error === "ORDER_ALREADY_BILLED") return rep.code(409).send({ message: "Pedido já faturado." });
-    if (res.error === "ORDER_EMPTY") return rep.code(409).send({ message: "Pedido sem itens." });
-
-    return rep.code(400).send({ message: "Não foi possível faturar o pedido." });
-  }
-
-  // res.data = { sale, items }
-  // seu front espera BillOrderResult { saleId }
-  const saleId = Number((res as any).data?.sale?.id);
-  return rep.send({ orderId, saleId });
+export async function createFromQuote(
+  req: FastifyRequest<{ Params: QidParams }>,
+  rep: FastifyReply
+) {
+  const result = await service.createFromQuote(req.auth!.companyId, Number(req.params.id));
+  if (hasError(result)) return mapError(rep, result.error);
+  return rep.code(201).send(result.data);
 }

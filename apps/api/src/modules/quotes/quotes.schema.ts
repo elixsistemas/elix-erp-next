@@ -2,6 +2,28 @@ import { z } from "zod";
 
 export const QuoteStatusSchema = z.enum(["draft", "approved", "cancelled"]);
 
+// Acrescentar ao quoteItemSchema:
+export const quoteItemSchema = z.object({
+  productId:   z.number().int().positive().nullable().optional(),
+  description: z.string().min(1, "Descrição obrigatória"),
+  quantity:    z.number().positive("Quantidade deve ser maior que 0"),
+  unitPrice:   z.number().min(0),
+  unit:        z.string().max(10).nullable().optional(), // ← novo
+});
+
+// Acrescentar ao quoteSchema:
+export const quoteSchema = z.object({
+  customerId:    z.number().min(1, "Cliente obrigatório"),
+  sellerId:      z.number().int().positive().nullable().optional(),
+  validUntil:    z.string().nullable().optional(),        // ← novo  (ISO date)
+  paymentTerms:  z.string().nullable().optional(),
+  paymentMethod: z.string().nullable().optional(),
+  freightValue:  z.number().min(0).default(0),            // ← novo  (reais, converte p/ centavos)
+  notes:         z.string().nullable().optional(),        // obs do cliente (já existia)
+  internalNotes: z.string().nullable().optional(),        // ← novo  obs interna
+  items:         z.array(quoteItemSchema).min(1, "Informe ao menos 1 item"),
+});
+
 export const QuoteListQuerySchema = z.object({
   q: z.string().trim().min(1).optional(),
   status: QuoteStatusSchema.optional(),

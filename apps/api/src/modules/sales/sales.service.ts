@@ -1,151 +1,197 @@
-import {
-  loadQuoteWithItems,
-  convertQuoteToSaleTx,
-  listSales,
-  getSale,
-  getSaleForClosing,
-  cancelSaleTx,
-  updateSale,
-  closeSaleTx,
-  closeSaleWithReceivablesTx
-} from "./sales.repository";
+import * as repo from "./sales.repository";
+import { getPool } from "../../config/db";
+import sql from "mssql";
+import type { SaleCreate, SaleListQuery, SaleUpdate } from "./sales.schema";
 
-import { getPaymentTermOffsets } from "../payment_terms/payment_terms.service";
-import type { CloseSaleBody } from "./sales.schema";
+type Ok<T>  = { data: T };
+type Err<E> = { error: E };
+export type SaleServiceError =
+  | "CUSTOMER_NOT_FOUND"
+  | "PRODUCT_NOT_FOUND"
+  | "SELLER_NOT_FOUND"
+  | "SALE_NOT_FOUND"
+  | "SALE_LOCKED"
+  | "INVALID_STATUS"
+  | "QUOTE_NOT_FOUND_OR_NOT_APPROVED"
+  | "ORDER_NOT_FOUND_OR_NOT_CONFIRMED";
 
+const ok  = <T>(data: T): Ok<T>   => ({ data });
+const err = <E>(e: E):    Err<E>  => ({ error: e });
 
-function toUTCDateString(d: Date) {
-  return d.toISOString().slice(0, 10);
+// ── list ─────────────────────────────────────────────────────
+export async function list(companyId: number, query: SaleListQuery) {
+  return ok(await repo.listSales(companyId, query));
 }
 
-function addDaysUTC(yyyyMmDd: string, days: number) {
-  const [y, m, d] = yyyyMmDd.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  dt.setUTCDate(dt.getUTCDate() + days);
-  return toUTCDateString(dt);
+// ── get ──────────────────────────────────────────────────────
+export async function get(companyId: number, id: number) {
+  const sale = await repo.getSale(companyId, id);
+  if (!sale) return err<SaleServiceError>("SALE_NOT_FOUND");
+  const items = await repo.getSaleItems(companyId, id);
+  return ok({ sale, items });
 }
 
-function splitAmounts(total: number, n: number) {
-  const cents = Math.round(total * 100);
-  const base = Math.floor(cents / n);
-  const rem = cents - base * n;
-
-  const parts = Array(n).fill(base);
-  for (let i = 0; i < rem; i++) parts[i] += 1;
-
-  return parts.map((c: number) => c / 100);
+// ── helper: resolve seller ───────────────────────────────────
+async function resolveSeller(companyId: number, sellerId?: number | null) {
+  if (!sellerId) return { sellerId: null, sellerName: null, error: null };
+  const name = await repo.resolveSellerName(companyId, sellerId);
+  if (!name) return { sellerId: null, sellerName: null, error: "SELLER_NOT_FOUND" as SaleServiceError };
+  return { sellerId, sellerName: name, error: null };
 }
 
-export async function previewInstallments(companyId: number, saleId: number) {
-  const sale = await getSaleForClosing(companyId, saleId);
-  if (!sale) return { error: "SALE_NOT_FOUND" as const };
+// ── create ───────────────────────────────────────────────────
+export async function create(companyId: number, args: SaleCreate) {
+  const ok1 = await repo.ensureCustomerBelongs(companyId, args.customerId);
+  if (!ok1) return err<SaleServiceError>("CUSTOMER_NOT_FOUND");
 
-  const status = String(sale.status ?? "").toLowerCase();
-  if (status !== "open") return { error: "SALE_NOT_OPEN" as const };
-
-  if (!sale.payment_method_id) return { error: "PAYMENT_METHOD_REQUIRED" as const };
-  if (!sale.payment_term_id) return { error: "PAYMENT_TERM_REQUIRED" as const };
-
-  // busca offsets do payment_term (via service do módulo)
-  let offsets: number[];
-  try {
-    offsets = await getPaymentTermOffsets(companyId, Number(sale.payment_term_id));
-  } catch {
-    return { error: "PAYMENT_TERM_INVALID" as const };
+  const productIds = args.items.map(i => i.productId).filter((id): id is number => !!id);
+  if (productIds.length) {
+    const ok2 = await repo.ensureProductsBelong(companyId, productIds);
+    if (!ok2) return err<SaleServiceError>("PRODUCT_NOT_FOUND");
   }
 
-  const issueDate = toUTCDateString(new Date()); // hoje UTC
-  const dueDates = offsets.map((o) => addDaysUTC(issueDate, o));
-  const amounts = splitAmounts(Number(sale.total), dueDates.length);
+  const seller = await resolveSeller(companyId, args.sellerId);
+  if (seller.error) return err<SaleServiceError>(seller.error);
 
-  return {
-    data: {
-      issueDate,
-      total: Number(sale.total),
-      installments: dueDates.map((dueDate, i) => ({
-        installmentNumber: i + 1,
-        dueDate,
-        amount: amounts[i]
-      }))
+  const saleId = await repo.createSaleTx(
+    companyId, args.customerId,
+    args.quoteId ?? null, args.orderId ?? null,
+    seller.sellerId, seller.sellerName,
+    {
+      discount:      args.discount,
+      freightValue:  args.freightValue,   // ← novo
+      paymentTerms:  args.paymentTerms,
+      paymentMethod: args.paymentMethod,
+      notes:         args.notes,
+      internalNotes: args.internalNotes,  // ← novo
+    },
+    args.items
+  );
+
+  const sale  = await repo.getSale(companyId, saleId);
+  const items = await repo.getSaleItems(companyId, saleId);
+  return ok({ sale: sale!, items });
+}
+
+// ── update ───────────────────────────────────────────────────
+export async function update(companyId: number, id: number, args: SaleUpdate) {
+  const sale = await repo.getSale(companyId, id);
+  if (!sale) return err<SaleServiceError>("SALE_NOT_FOUND");
+  if (sale.status !== "draft") return err<SaleServiceError>("SALE_LOCKED");
+
+  if (args.customerId) {
+    const ok1 = await repo.ensureCustomerBelongs(companyId, args.customerId);
+    if (!ok1) return err<SaleServiceError>("CUSTOMER_NOT_FOUND");
+  }
+  if (args.items) {
+    const productIds = args.items.map(i => i.productId).filter((id): id is number => !!id);
+    if (productIds.length) {
+      const ok2 = await repo.ensureProductsBelong(companyId, productIds);
+      if (!ok2) return err<SaleServiceError>("PRODUCT_NOT_FOUND");
     }
-  };
+  }
+
+  const seller = await resolveSeller(companyId, args.sellerId);
+  if (seller.error) return err<SaleServiceError>(seller.error);
+
+  await repo.updateSaleV2(
+    companyId, id,
+    seller.sellerId, seller.sellerName,
+    args, args.items
+  );
+
+  const updated = await repo.getSale(companyId, id);
+  const items   = await repo.getSaleItems(companyId, id);
+  return ok({ sale: updated!, items });
 }
 
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
+// ── complete ─────────────────────────────────────────────────
+export async function complete(companyId: number, id: number) {
+  const sale = await repo.getSale(companyId, id);
+  if (!sale) return err<SaleServiceError>("SALE_NOT_FOUND");
+  if (sale.status !== "draft") return err<SaleServiceError>("INVALID_STATUS");
+  await repo.setSaleStatus(companyId, id, "completed");
+  return ok({ id, status: "completed" });
 }
 
-export async function convertFromQuote(companyId: number, quoteId: number) {
-  const loaded = await loadQuoteWithItems(companyId, quoteId);
-  if (!loaded) return { error: "QUOTE_NOT_FOUND" as const };
+// ── cancel ───────────────────────────────────────────────────
+export async function cancel(companyId: number, id: number) {
+  const sale = await repo.getSale(companyId, id);
+  if (!sale) return err<SaleServiceError>("SALE_NOT_FOUND");
+  if (sale.status === "cancelled") return err<SaleServiceError>("INVALID_STATUS");
+  await repo.setSaleStatus(companyId, id, "cancelled");
+  return ok({ id, status: "cancelled" });
+}
 
-  const { quote, items } = loaded;
+// ── createFromQuote ──────────────────────────────────────────
+export async function createFromQuote(companyId: number, quoteId: number) {
+  const pool = await getPool();
 
-  if (quote.status === "cancelled") return { error: "QUOTE_CANCELLED" as const };
-  if (quote.status === "approved") return { error: "QUOTE_ALREADY_APPROVED" as const };
-  if (!items.length) return { error: "QUOTE_EMPTY" as const };
+  const { recordset: qr } = await pool.request()
+    .input("company_id", sql.Int, companyId)
+    .input("id",         sql.Int, quoteId)
+    .query(`SELECT * FROM dbo.quotes
+            WHERE company_id = @company_id AND id = @id AND status = 'approved'`);
+  if (!qr[0]) return err<SaleServiceError>("QUOTE_NOT_FOUND_OR_NOT_APPROVED");
 
-  const calcItems = items.map((i) => ({
-    productId: i.product_id,
-    description: i.description,
-    quantity: Number(i.quantity),
-    unitPrice: round2(Number(i.unit_price)),
-    total: round2(Number(i.quantity) * Number(i.unit_price)),
-    kind: i.kind
-  }));
+  const { recordset: ir } = await pool.request()
+    .input("quote_id", sql.Int, quoteId)
+    .query("SELECT * FROM dbo.quote_items WHERE quote_id = @quote_id");
 
-  const subtotal = round2(calcItems.reduce((acc, it) => acc + it.total, 0));
-  const discount = round2(Number(quote.discount ?? 0));
-  const total = round2(Math.max(0, subtotal - discount));
-
-  const created = await convertQuoteToSaleTx({
-    companyId,
-    quoteId: quote.id,
-    customerId: quote.customer_id,
-    subtotal,
-    discount,
-    total,
-    notes: quote.notes,
-    items: calcItems
+  const q = qr[0];
+  return create(companyId, {
+    customerId:    q.customer_id,
+    quoteId:       quoteId,
+    orderId:       null,
+    discount:      Number(q.discount   ?? 0),
+    freightValue:  Number(q.freight_value ?? 0),  // ← novo
+    paymentTerms:  q.payment_terms  ?? null,
+    paymentMethod: q.payment_method ?? null,
+    notes:         q.notes          ?? null,
+    // internalNotes não herdado intencionalmente
+    items: ir.map((i: any) => ({
+      productId:   i.product_id  ?? null,
+      description: i.description,
+      quantity:    Number(i.quantity),
+      unitPrice:   Number(i.unit_price),
+      unit:        i.unit ?? "UN",   // ← novo
+    })),
   });
-
-  return { data: created };
 }
 
-export async function list(args: {
-  companyId: number;
-  from?: string;
-  to?: string;
-  customerId?: number;
-}) {
-  return listSales(args);
-}
+// ── createFromOrder ──────────────────────────────────────────
+export async function createFromOrder(companyId: number, orderId: number) {
+  const pool = await getPool();
 
-export async function get(companyId: number, saleId: number) {
-  return getSale(companyId, saleId);
-}
+  const { recordset: or } = await pool.request()
+    .input("company_id", sql.Int, companyId)
+    .input("id",         sql.Int, orderId)
+    .query(`SELECT * FROM dbo.orders
+            WHERE company_id = @company_id AND id = @id AND status = 'confirmed'`);
+  if (!or[0]) return err<SaleServiceError>("ORDER_NOT_FOUND_OR_NOT_CONFIRMED");
 
-export async function cancel(companyId: number, saleId: number) {
-  return cancelSaleTx({ companyId, saleId });
-}
+  const { recordset: ir } = await pool.request()
+    .input("order_id", sql.Int, orderId)
+    .query("SELECT * FROM dbo.order_items WHERE order_id = @order_id");
 
-export async function update(args: {
-  companyId: number;
-  saleId: number;
-  notes?: string | null;
-  paymentMethodId?: number | null;
-  paymentTermId?: number | null;
-}) {
-  return updateSale(args);
-}
-
-export async function close(companyId: number, saleId: number, body: CloseSaleBody) {
-  return closeSaleWithReceivablesTx({
-    companyId,
-    saleId,
-    bankAccountId: body.bankAccountId,
-    documentNo: body.documentNo ?? null,
-    note: body.note ?? null,
-    installments: body.installments
+  const o = or[0];
+  return create(companyId, {
+    customerId:    o.customer_id,
+    quoteId:       o.quote_id      ?? null,
+    orderId:       orderId,
+    sellerId:      o.seller_id     ?? null,
+    discount:      Number(o.discount    ?? 0),
+    freightValue:  Number(o.freight_value ?? 0),  // ← novo
+    paymentTerms:  o.payment_terms  ?? null,
+    paymentMethod: o.payment_method ?? null,
+    notes:         o.notes          ?? null,
+    // internalNotes não herdado intencionalmente
+    items: ir.map((i: any) => ({
+      productId:   i.product_id  ?? null,
+      description: i.description,
+      quantity:    Number(i.quantity),
+      unitPrice:   Number(i.unit_price),
+      unit:        i.unit ?? "UN",   // ← novo
+    })),
   });
 }

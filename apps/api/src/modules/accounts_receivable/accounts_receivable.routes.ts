@@ -1,20 +1,43 @@
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../config/prehandlers";
 import * as controller from "./accounts_receivable.controller";
+import { requireAuth, requirePermission } from "../../config/prehandlers";
 
 type IdParams = { id: string };
 
 export async function accountsReceivableRoutes(app: FastifyInstance) {
-  app.get("/receivables", { preHandler: requireAuth }, controller.list);
+  app.get(
+    "/receivables",
+    { preHandler: [requireAuth, requirePermission("receivables.read")] },
+    controller.list
+  );
 
-  app.get("/receivables/by-sale/:id", { preHandler: requireAuth }, controller.getBySale);
+  app.get<{ Params: IdParams }>(
+    "/receivables/by-sale/:id",
+    { preHandler: [requireAuth, requirePermission("receivables.read")] },
+    controller.getBySale
+  );
 
-  app.patch<{ Params: IdParams }>("/receivables/:id", { preHandler: requireAuth }, controller.update);
-  app.post<{ Params: IdParams }>("/receivables/:id/cancel", { preHandler: requireAuth }, controller.cancel);
+  app.patch<{ Params: IdParams }>(
+    "/receivables/:id",
+    { preHandler: [requireAuth, requirePermission("receivables.update")] },
+    controller.update
+  );
 
-  // B) criar título a partir de uma venda
-  app.post<{ Params: IdParams }>("/receivables/from-sale/:id", { preHandler: requireAuth }, controller.fromSale);
+  app.post<{ Params: IdParams }>(
+    "/receivables/:id/cancel",
+    { preHandler: [requireAuth, requirePermission("receivables.update")] },
+    controller.cancel
+  );
 
-  // emissão (mock por enquanto)
-  app.post<{ Params: IdParams }>("/receivables/:id/issue", { preHandler: requireAuth }, controller.issueMock);
+  app.post<{ Params: IdParams }>(
+    "/receivables/from-sale/:id",
+    { preHandler: [requireAuth, requirePermission("receivables.create")] },
+    controller.fromSale
+  );
+
+  app.post<{ Params: IdParams }>(
+    "/receivables/:id/issue",
+    { preHandler: [requireAuth, requirePermission("receivables.update")] },
+    controller.issueMock
+  );
 }

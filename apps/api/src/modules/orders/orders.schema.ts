@@ -1,53 +1,53 @@
 import { z } from "zod";
 
-export const CreateOrderSchema = z.object({
-  customerId: z.number().int().positive(),
-  notes: z.string().max(2000).optional().nullable(),
-  discount: z.number().min(0).optional().nullable(),
+export const OrderStatusSchema = z.enum(["draft", "confirmed", "cancelled"]);
 
-  // ✅ novo:
-  quoteId: z.number().int().positive().optional().nullable(),
-
-  items: z.array(
-    z.object({
-      productId: z.number().int().positive(),
-      kind: z.enum(["product", "service"]).default("product"),
-      description: z.string().min(1).max(200),
-      quantity: z.number().positive(),
-      unitPrice: z.number().min(0),
-    })
-  ).min(1),
+export const OrderListQuerySchema = z.object({
+  q:          z.string().trim().min(1).optional(),
+  status:     OrderStatusSchema.optional(),
+  customerId: z.coerce.number().int().positive().optional(),
+  from:       z.string().optional(),
+  to:         z.string().optional(),
+  limit:      z.coerce.number().int().min(1).max(200).optional(),
 });
-
-export const UpdateOrderSchema = z.object({
-  status: z.enum(["draft", "billed", "cancelled"]).optional(),
-  notes: z.string().max(2000).optional().nullable(),
-  discount: z.number().min(0).optional().nullable(),
-
-  // ⚠️ eu recomendo NÃO permitir alterar quoteId depois que criou
-  // mas se quiser permitir, habilite:
-  // quoteId: z.number().int().positive().optional().nullable(),
-});
-
-export const OrderStatusSchema = z.enum(["draft", "open", "billed", "cancelled"]);
 
 export const OrderItemSchema = z.object({
-  productId: z.coerce.number().int().positive(),
-  kind: z.enum(["product", "service"]),
-  description: z.string().trim().min(1).max(255),
-  quantity: z.coerce.number().positive(), // decimal(18,3)
-  unitPrice: z.coerce.number().nonnegative(), // decimal(18,2)
-  total: z.coerce.number().nonnegative(), // decimal(18,2)
+  productId:   z.number().int().positive().nullable().optional(),
+  description: z.string().min(1).max(255),
+  quantity:    z.number().positive(),
+  unitPrice:   z.number().min(0),
+  unit:        z.string().max(10).nullable().optional(),  // ← novo
 });
 
-export const ListOrdersQuerySchema = z.object({
-  from: z.string().optional(), // YYYY-MM-DD
-  to: z.string().optional(),
-  customerId: z.coerce.number().int().positive().optional(),
-  status: OrderStatusSchema.optional(),
+export const OrderCreateSchema = z.object({
+  customerId:           z.number().int().positive(),
+  quoteId:              z.number().int().positive().nullable().optional(),
+  discount:             z.number().min(0).default(0),
+  freightValue:         z.number().min(0).default(0),      // ← novo
+  notes:                z.string().nullable().optional(),
+  internalNotes:        z.string().nullable().optional(),  // ← novo
+  expectedDelivery:     z.string().nullable().optional(),
+  paymentTerms:         z.string().nullable().optional(),
+  paymentMethod:        z.string().nullable().optional(),
+  sellerName:           z.string().nullable().optional(),
+  transportMode:        z.string().nullable().optional(),
+  deliveryZipcode:      z.string().nullable().optional(),
+  deliveryStreet:       z.string().nullable().optional(),
+  deliveryNumber:       z.string().nullable().optional(),
+  deliveryComplement:   z.string().nullable().optional(),
+  deliveryNeighborhood: z.string().nullable().optional(),
+  deliveryCity:         z.string().nullable().optional(),
+  deliveryState:        z.string().nullable().optional(),
+  items: z.array(OrderItemSchema).min(1, "Informe ao menos 1 item"),
 });
 
-export const BillOrderSchema = z.object({
-  // deixa pronto pro futuro, hoje não precisa nada
-  // no futuro: { finalizeSale?: boolean, issueFiscal?: "NFE"|"NFSE"|"BOTH" }
-});
+export const OrderUpdateSchema = OrderCreateSchema
+  .omit({ quoteId: true })
+  .partial()
+  .extend({ items: z.array(OrderItemSchema).min(1).optional() });
+
+export type OrderStatus    = z.infer<typeof OrderStatusSchema>;
+export type OrderListQuery = z.infer<typeof OrderListQuerySchema>;
+export type OrderCreate    = z.infer<typeof OrderCreateSchema>;
+export type OrderUpdate    = z.infer<typeof OrderUpdateSchema>;
+export type OrderItem      = z.infer<typeof OrderItemSchema>;

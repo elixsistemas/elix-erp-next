@@ -1,627 +1,383 @@
 import sql from "mssql";
 import { getPool } from "../../config/db";
+import type { SaleCreate, SaleListQuery, SaleUpdate } from "./sales.schema";
 
-function utcTodayYYYYMMDD() {
-  return new Date().toISOString().slice(0, 10);
+const toCents   = (v: number) => Math.round(v * 10000);
+const fromCents = (v: number) => v / 10000;
+
+function calcTotals(
+  items:       SaleCreate["items"],
+  discountRaw: number,
+  freightRaw:  number = 0   // ← novo
+) {
+  const subtotalCents = items.reduce((acc, it) => {
+    return acc + Math.round(toCents(it.quantity) * toCents(it.unitPrice) / 10000);
+  }, 0);
+  const discountCents = toCents(discountRaw);
+  const freightCents  = toCents(freightRaw);                               // ← novo
+  const totalCents    = Math.max(0, subtotalCents - discountCents + freightCents);
+  return {
+    subtotal: fromCents(subtotalCents),
+    discount: fromCents(discountCents),
+    freight:  fromCents(freightCents),                                     // ← novo
+    total:    fromCents(totalCents),
+  };
 }
 
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
-}
-
-export async function getSaleForClosing(companyId: number, saleId: number) {
-  const pool = await getPool();
-  const r = await pool.request()
-    .input("company_id", companyId)
-    .input("sale_id", saleId)
-    .query(`
-      SELECT id, company_id, status, total, payment_method_id, payment_term_id
-      FROM dbo.sales
-      WHERE company_id=@company_id AND id=@sale_id
-    `);
-
-  return r.recordset[0] ?? null;
-}
-
-export async function closeSaleWithReceivablesTx(args: {
-  companyId: number;
-  saleId: number;
-  bankAccountId: number;
-  documentNo: string | null;
-  note: string | null;
-  installments: Array<{ dueDate: string; amount: number }>;
-}) {
-  const pool = await getPool();
-  const tx = new sql.Transaction(pool);
-  await tx.begin();
-
-  try {
-    // 1) trava venda
-    const s = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        SELECT id, customer_id, status, total, payment_method_id, payment_term_id
-        FROM dbo.sales WITH (UPDLOCK, ROWLOCK)
-        WHERE company_id=@company_id AND id=@sale_id
-      `);
-
-    const sale = s.recordset[0] ?? null;
-    if (!sale) {
-      await tx.rollback();
-      return { error: "SALE_NOT_FOUND" as const };
-    }
-
-    const status = String(sale.status ?? "").toLowerCase();
-
-    if (status === "cancelled") {
-      await tx.rollback();
-      return { error: "SALE_CANCELLED" as const };
-    }
-    if (status === "closed") {
-      await tx.rollback();
-      return { error: "SALE_ALREADY_CLOSED" as const };
-    }
-    if (status !== "open") {
-      await tx.rollback();
-      return { error: "SALE_NOT_OPEN" as const };
-    }
-
-    if (!sale.payment_method_id) {
-      await tx.rollback();
-      return { error: "PAYMENT_METHOD_REQUIRED" as const };
-    }
-    if (!sale.payment_term_id) {
-      await tx.rollback();
-      return { error: "PAYMENT_TERM_REQUIRED" as const };
-    }
-
-    // 2) valida conta bancária (pertence à empresa e está ativa)
-    const ba = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("id", args.bankAccountId)
-      .query(`
-        SELECT TOP 1 id
-        FROM dbo.bank_accounts
-        WHERE company_id=@company_id AND id=@id AND active=1
-      `);
-
-    if (!ba.recordset[0]) {
-      await tx.rollback();
-      return { error: "BANK_ACCOUNT_INVALID" as const };
-    }
-
-    // 3) valida parcelas
-    if (!args.installments?.length) {
-      await tx.rollback();
-      return { error: "INSTALLMENTS_INVALID" as const };
-    }
-
-    function toCents(n: number) {
-      return Math.round(Number(n) * 100);
-    }
-
-    const saleTotalCents = toCents(Number(sale.total));
-    const sumCents = args.installments.reduce((acc, it) => acc + toCents(Number(it.amount)), 0);
-
-    if (sumCents !== saleTotalCents) {
-      await tx.rollback();
-      return { error: "INSTALLMENTS_INVALID" as const };
-    }
-
-    if (args.installments.some(it => Number(it.amount) <= 0)) {
-      await tx.rollback();
-      return { error: "INSTALLMENTS_INVALID" as const };
-    }
-
-
-    const exists = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        SELECT TOP 1 id
-        FROM dbo.accounts_receivable WITH (UPDLOCK, HOLDLOCK)
-        WHERE company_id=@company_id AND sale_id=@sale_id
-      `);
-
-    if (exists.recordset[0]) {
-      await tx.rollback();
-      return { error: "RECEIVABLE_ALREADY_EXISTS" as const };
-    }
-
-
-    // 4) cria N títulos (1 venda → N linhas)
-    const issueDate = utcTodayYYYYMMDD();
-    const totalInstallments = args.installments.length;
-
-    for (let i = 0; i < totalInstallments; i++) {
-      const it = args.installments[i];
-
-      await new sql.Request(tx)
-        .input("company_id", args.companyId)
-        .input("sale_id", args.saleId)
-        .input("customer_id", Number(sale.customer_id))
-        .input("payment_method_id", Number(sale.payment_method_id))
-        .input("payment_term_id", Number(sale.payment_term_id))
-        .input("installment_number", i + 1)
-        .input("total_installments", totalInstallments)
-        .input("issue_date", issueDate)
-        .input("due_date", it.dueDate)
-        .input("amount", Number(it.amount))
-        .input("status", "open")
-        .input("bank_account_id", args.bankAccountId)
-        .input("document_no", args.documentNo)
-        .input("note", args.note)
-        .query(`
-          INSERT INTO dbo.accounts_receivable
-            (company_id, sale_id, customer_id, payment_method_id, payment_term_id,
-             installment_number, total_installments, issue_date, due_date, amount, status,
-             bank_account_id, document_no, note, created_at)
-          VALUES
-            (@company_id, @sale_id, @customer_id, @payment_method_id, @payment_term_id,
-             @installment_number, @total_installments, @issue_date, @due_date, @amount, @status,
-             @bank_account_id, @document_no, @note, SYSUTCDATETIME())
-        `);
-    }
-
-    // 5) fecha venda
-    const u = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        UPDATE dbo.sales
-        SET status='closed'
-        OUTPUT INSERTED.id, INSERTED.status
-        WHERE company_id=@company_id AND id=@sale_id AND status='open'
-      `);
-
-    await tx.commit();
-    return { data: { sale: u.recordset[0], receivablesCreated: totalInstallments } };
-    } catch (e: any) {
-    const msg = String(e?.message ?? "");
-
-    // 2627 = Violation of PRIMARY KEY/UNIQUE constraint
-    // 2601 = Cannot insert duplicate key row in object with unique index
-    if (e?.number === 2627 || e?.number === 2601 || msg.includes("UX_ar_sale_installment")) {
-      await tx.rollback();
-      return { error: "RECEIVABLE_ALREADY_EXISTS" as const };
-    }
-
-    await tx.rollback();
-    throw e;
-  }
-}
-
-type QuoteRow = {
-  id: number;
-  customer_id: number;
-  status: "draft" | "approved" | "cancelled";
-  subtotal: number;
-  discount: number;
-  total: number;
+// ── tipos ────────────────────────────────────────────────────
+export type SaleRow = {
+  id: number; companyId: number; customerId: number;
+  quoteId: number | null; orderId: number | null; sellerId: number | null;
+  status: string;
+  subtotal: number; discount: number; total: number;
+  freightValue:  number;          // ← novo
+  internalNotes: string | null;   // ← novo
+  sellerName: string | null; paymentTerms: string | null; paymentMethod: string | null;
   notes: string | null;
+  createdAt: Date; updatedAt: Date | null;
+  completedAt: Date | null; cancelledAt: Date | null;
+  customerName?: string;
 };
 
-type QuoteItemRow = {
-  product_id: number;
-  description: string;
-  quantity: number;
-  unit_price: number;
-  total: number;
-  kind: "product" | "service";
+export type SaleItemRow = {
+  id: number; saleId: number; productId: number | null;
+  description: string; quantity: number; unitPrice: number; total: number;
+  unit: string | null;   // ← novo
 };
 
-export async function loadQuoteWithItems(companyId: number, quoteId: number) {
-  const pool = await getPool();
-
-  const q = await pool
-    .request()
-    .input("company_id", companyId)
-    .input("quote_id", quoteId)
-    .query(`
-      SELECT id, customer_id, status, subtotal, discount, total, notes
-      FROM quotes
-      WHERE company_id=@company_id AND id=@quote_id
-    `);
-
-  const quote = (q.recordset[0] as QuoteRow) ?? null;
-  if (!quote) return null;
-
-  const itemsRes = await pool
-    .request()
-    .input("company_id", companyId)
-    .input("quote_id", quoteId)
-    .query(`
-      SELECT
-        qi.product_id,
-        qi.description,
-        qi.quantity,
-        qi.unit_price,
-        qi.total,
-        p.kind
-      FROM quote_items qi
-      INNER JOIN quotes q ON q.id = qi.quote_id
-      INNER JOIN products p ON p.id = qi.product_id AND p.company_id = q.company_id
-      WHERE q.company_id=@company_id AND qi.quote_id=@quote_id
-      ORDER BY qi.id
-    `);
-
-  return { quote, items: itemsRes.recordset as QuoteItemRow[] };
+function mapSale(r: any): SaleRow {
+  return {
+    id: r.id, companyId: r.company_id, customerId: r.customer_id,
+    quoteId: r.quote_id, orderId: r.order_id, sellerId: r.seller_id,
+    status: r.status,
+    subtotal: Number(r.subtotal), discount: Number(r.discount), total: Number(r.total),
+    freightValue:  Number(r.freight_value  ?? 0),   // ← novo
+    internalNotes: r.internal_notes ?? null,         // ← novo
+    sellerName: r.seller_name,
+    paymentTerms: r.payment_terms, paymentMethod: r.payment_method,
+    notes: r.notes,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+    completedAt: r.completed_at, cancelledAt: r.cancelled_at,
+    customerName: r.customer_name,
+  };
 }
 
-export async function convertQuoteToSaleTx(args: {
-  companyId: number;
-  quoteId: number;
-  customerId: number;
-  subtotal: number;
-  discount: number;
-  total: number;
-  notes?: string | null;
-  items: Array<{
-    productId: number;
-    description: string;
-    quantity: number;
-    unitPrice: number;
-    total: number;
-    kind: "product" | "service";
-  }>;
-}) {
-  const pool = await getPool();
-  const tx = new sql.Transaction(pool);
-  await tx.begin();
-
-  try {
-    // 1) Cria sale
-    const saleRes = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("customer_id", args.customerId)
-      .input("quote_id", args.quoteId)
-      .input("subtotal", args.subtotal)
-      .input("discount", args.discount)
-      .input("total", args.total)
-      .input("notes", args.notes ?? null)
-      .query(`
-        INSERT INTO sales (company_id, customer_id, quote_id, subtotal, discount, total, notes)
-        OUTPUT INSERTED.id, INSERTED.company_id, INSERTED.customer_id, INSERTED.quote_id,
-               INSERTED.status, INSERTED.subtotal, INSERTED.discount, INSERTED.total, INSERTED.notes, INSERTED.created_at
-        VALUES (@company_id, @customer_id, @quote_id, @subtotal, @discount, @total, @notes)
-      `);
-
-    const sale = saleRes.recordset[0];
-    const saleId = Number(sale.id);
-    const occurredAt = sale?.created_at ?? null; // pode ser Date ou string, o driver costuma aceitar
-
-    // 2) Insere itens + estoque OUT quando kind=product (com idempotência por item)
-    for (const it of args.items) {
-      // Insere item e pega o ID (pra idempotency_key)
-      const itemRes = await new sql.Request(tx)
-        .input("sale_id", saleId)
-        .input("product_id", it.productId)
-        .input("description", it.description)
-        .input("quantity", it.quantity)
-        .input("unit_price", it.unitPrice)
-        .input("total", it.total)
-        .query(`
-          INSERT INTO sale_items (sale_id, product_id, description, quantity, unit_price, total)
-          OUTPUT INSERTED.id
-          VALUES (@sale_id, @product_id, @description, @quantity, @unit_price, @total)
-        `);
-
-      const saleItemId = Number(itemRes.recordset[0]?.id);
-      if (!Number.isFinite(saleItemId) || saleItemId <= 0) {
-        throw new Error("Failed to create sale item");
-      }
-
-      // Baixa estoque somente para produto
-      if (it.kind === "product") {
-        await new sql.Request(tx)
-          .input("company_id", args.companyId)
-          .input("product_id", it.productId)
-          .input("type", "OUT")
-          .input("quantity", it.quantity)
-          .input("source", "SALE")
-          .input("source_id", saleId)
-          .input("note", `Auto OUT from sale #${saleId}`)
-
-          // ✅ novos campos (ledger)
-          .input("source_type", "SALE")
-          .input("reason", "SALE")
-          .input("idempotency_key", `SALE:${saleId}:ITEM:${saleItemId}`)
-          .input("occurred_at", occurredAt)
-
-          .execute("dbo.sp_inventory_move");
-      }
-    }
-
-    // 3) Marca quote como approved
-    await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("quote_id", args.quoteId)
-      .query(`
-        UPDATE quotes
-        SET status='approved'
-        WHERE company_id=@company_id AND id=@quote_id AND status='draft';
-
-        IF @@ROWCOUNT = 0
-        THROW 50010, 'Quote already processed', 1;
-      `);
-
-    // 4) Retorna sale + items
-    const itemsRes = await new sql.Request(tx)
-      .input("sale_id", saleId)
-      .query(`
-        SELECT id, sale_id, product_id, description, quantity, unit_price, total
-        FROM sale_items
-        WHERE sale_id=@sale_id
-        ORDER BY id
-      `);
-
-    await tx.commit();
-    return { sale, items: itemsRes.recordset };
-  } catch (e) {
-    await tx.rollback();
-    throw e;
-  }
+function mapItem(r: any): SaleItemRow {
+  return {
+    id: r.id, saleId: r.sale_id, productId: r.product_id,
+    description: r.description,
+    quantity: Number(r.quantity), unitPrice: Number(r.unit_price), total: Number(r.total),
+    unit: r.unit ?? null,   // ← novo
+  };
 }
 
-export async function listSales(args: {
-  companyId: number;
-  from?: string;
-  to?: string;
-  customerId?: number;
-}) {
+// ── listSales ────────────────────────────────────────────────
+export async function listSales(companyId: number, q: SaleListQuery) {
   const pool = await getPool();
-  const req = pool.request().input("company_id", args.companyId);
+  const req  = pool.request().input("company_id", sql.Int, companyId);
+  const where: string[] = ["s.company_id = @company_id", "s.cancelled_at IS NULL"];
 
-  let where = "WHERE company_id=@company_id";
-
-  if (args.customerId) {
-    req.input("customer_id", args.customerId);
-    where += " AND customer_id=@customer_id";
+  if (q.q) {
+    req.input("q", sql.NVarChar, `%${q.q}%`);
+    where.push("(c.name LIKE @q OR CAST(s.id AS VARCHAR) = @q OR s.seller_name LIKE @q)");
   }
+  if (q.status)     { req.input("status", sql.VarChar, q.status);    where.push("s.status = @status"); }
+  if (q.customerId) { req.input("cid",    sql.Int,     q.customerId); where.push("s.customer_id = @cid"); }
+  if (q.from)       { req.input("from",   sql.Date,    q.from);       where.push("s.created_at >= @from"); }
+  if (q.to)         { req.input("to",     sql.Date,    q.to);         where.push("s.created_at <= DATEADD(day,1,@to)"); }
 
-  if (args.from) {
-    req.input("from", args.from);
-    where += " AND created_at >= CAST(@from AS date)";
-  }
+  req.input("limit", sql.Int, q.limit ?? 100);
 
-  if (args.to) {
-    req.input("to", args.to);
-    where += " AND created_at < DATEADD(day, 1, CAST(@to AS date))";
-  }
-
-  const r = await req.query(`
-    SELECT id, company_id, customer_id, quote_id, status,
-           subtotal, discount, total, notes, created_at
-    FROM sales
-    ${where}
-    ORDER BY created_at DESC, id DESC
+  const { recordset } = await req.query(`
+    SELECT TOP (@limit)
+      s.*, c.name AS customer_name
+    FROM dbo.sales s
+    JOIN dbo.customers c ON c.id = s.customer_id AND c.company_id = s.company_id
+    WHERE ${where.join(" AND ")}
+    ORDER BY s.created_at DESC
   `);
-
-  return r.recordset;
+  return recordset.map(mapSale);
 }
 
-export async function getSale(companyId: number, saleId: number) {
+// ── getSale ──────────────────────────────────────────────────
+export async function getSale(companyId: number, id: number) {
   const pool = await getPool();
-  const s = await pool
-    .request()
-    .input("company_id", companyId)
-    .input("sale_id", saleId)
+  const { recordset } = await pool.request()
+    .input("company_id", sql.Int, companyId)
+    .input("id",         sql.Int, id)
     .query(`
-      SELECT id, company_id, customer_id, quote_id, status, subtotal, discount, total, notes, created_at
-      FROM sales
-      WHERE company_id=@company_id AND id=@sale_id
+      SELECT s.*, c.name AS customer_name
+      FROM dbo.sales s
+      JOIN dbo.customers c ON c.id = s.customer_id AND c.company_id = s.company_id
+      WHERE s.company_id = @company_id AND s.id = @id
     `);
-
-  const sale = s.recordset[0] ?? null;
-  if (!sale) return null;
-
-  const items = await pool
-    .request()
-    .input("sale_id", saleId)
-    .query(`
-      SELECT id, sale_id, product_id, description, quantity, unit_price, total
-      FROM sale_items
-      WHERE sale_id=@sale_id
-      ORDER BY id
-    `);
-
-  return { sale, items: items.recordset };
+  return recordset[0] ? mapSale(recordset[0]) : null;
 }
 
-export async function cancelSaleTx(args: { companyId: number; saleId: number }) {
+// ── getSaleItems ─────────────────────────────────────────────
+export async function getSaleItems(companyId: number, saleId: number) {
   const pool = await getPool();
-  const tx = new sql.Transaction(pool);
+  const { recordset } = await pool.request()
+    .input("company_id", sql.Int, companyId)
+    .input("sale_id",    sql.Int, saleId)
+    .query(`
+      SELECT si.*
+      FROM dbo.sale_items si
+      JOIN dbo.sales s ON s.id = si.sale_id
+      WHERE s.company_id = @company_id AND si.sale_id = @sale_id
+    `);
+  return recordset.map(mapItem);
+}
+
+// ── ensureCustomerBelongs ────────────────────────────────────
+export async function ensureCustomerBelongs(companyId: number, customerId: number) {
+  const pool = await getPool();
+  const { recordset } = await pool.request()
+    .input("company_id",  sql.Int, companyId)
+    .input("customer_id", sql.Int, customerId)
+    .query(`SELECT id FROM dbo.customers
+            WHERE company_id = @company_id AND id = @customer_id AND deleted_at IS NULL`);
+  return recordset.length > 0;
+}
+
+// ── ensureProductsBelong ─────────────────────────────────────
+export async function ensureProductsBelong(companyId: number, productIds: number[]) {
+  if (!productIds.length) return true;
+  const pool = await getPool();
+  const req  = pool.request().input("company_id", sql.Int, companyId);
+  const placeholders = productIds.map((pid, i) => {
+    req.input(`pid${i}`, sql.Int, pid);
+    return `@pid${i}`;
+  });
+  const { recordset } = await req.query(`
+    SELECT COUNT(*) AS cnt FROM dbo.products
+    WHERE company_id = @company_id AND id IN (${placeholders.join(",")}) AND deleted_at IS NULL
+  `);
+  return Number(recordset[0].cnt) === productIds.length;
+}
+
+// ── resolveSellerName ────────────────────────────────────────
+export async function resolveSellerName(companyId: number, sellerId: number) {
+  const pool = await getPool();
+  const { recordset } = await pool.request()
+    .input("company_id", sql.Int, companyId)
+    .input("id",         sql.Int, sellerId)
+    .query(`SELECT name FROM dbo.users
+            WHERE company_id = @company_id AND id = @id AND active = 1`);
+  return (recordset[0]?.name as string) ?? null;
+}
+
+// ── createSaleTx ─────────────────────────────────────────────
+export async function createSaleTx(
+  companyId:     number,
+  customerId:    number,
+  quoteId:       number | null,
+  orderId:       number | null,
+  sellerId:      number | null,
+  sellerName:    string | null,
+  args:          Omit<SaleCreate, "customerId"|"quoteId"|"orderId"|"sellerId"|"items">,
+  items:         SaleCreate["items"]
+) {
+  const { subtotal, discount, freight, total } =
+    calcTotals(items, args.discount ?? 0, args.freightValue ?? 0);  // ← freight
+
+  const pool = await getPool();
+  const tx   = new sql.Transaction(pool);
   await tx.begin();
 
   try {
-    const saleRes = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
+    const header = await new sql.Request(tx)
+      .input("company_id",     sql.Int,           companyId)
+      .input("customer_id",    sql.Int,           customerId)
+      .input("quote_id",       sql.Int,           quoteId)
+      .input("order_id",       sql.Int,           orderId)
+      .input("seller_id",      sql.Int,           sellerId)
+      .input("seller_name",    sql.NVarChar,      sellerName)
+      .input("subtotal",       sql.Decimal(15,4), subtotal)
+      .input("discount",       sql.Decimal(15,4), discount)
+      .input("freight_value",  sql.Decimal(15,4), freight)               // ← novo
+      .input("total",          sql.Decimal(15,4), total)
+      .input("payment_terms",  sql.NVarChar,      args.paymentTerms  ?? null)
+      .input("payment_method", sql.NVarChar,      args.paymentMethod ?? null)
+      .input("notes",          sql.NVarChar,      args.notes         ?? null)
+      .input("internal_notes", sql.NVarChar(sql.MAX), args.internalNotes ?? null) // ← novo
       .query(`
-        SELECT id, company_id, status, created_at
-        FROM sales WITH (UPDLOCK, ROWLOCK)
-        WHERE company_id=@company_id AND id=@sale_id
+        INSERT INTO dbo.sales (
+          company_id, customer_id, quote_id, order_id,
+          seller_id, seller_name,
+          subtotal, discount, freight_value, total,
+          payment_terms, payment_method,
+          notes, internal_notes
+        )
+        OUTPUT INSERTED.id
+        VALUES (
+          @company_id, @customer_id, @quote_id, @order_id,
+          @seller_id, @seller_name,
+          @subtotal, @discount, @freight_value, @total,
+          @payment_terms, @payment_method,
+          @notes, @internal_notes
+        )
       `);
 
-    const sale = saleRes.recordset[0] ?? null;
-    if (!sale) {
-      await tx.rollback();
-      return { error: "SALE_NOT_FOUND" as const };
-    }
+    const saleId = header.recordset[0].id as number;
 
-    const status = String(sale.status ?? "").toLowerCase();
-
-    if (status === "cancelled") {
-      await tx.rollback();
-      return { error: "SALE_ALREADY_CANCELLED" as const };
-    }
-
-    if (status !== "open") {
-      await tx.rollback();
-      return { error: "SALE_NOT_OPEN" as const };
-    }
-
-    // Pega itens + kind via join (estorna apenas produtos)
-    const itemsRes = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        SELECT si.id, si.description, si.quantity, si.unit_price, si.total, p.kind
-        FROM sale_items si
-        INNER JOIN sales s ON s.id = si.sale_id AND s.company_id = @company_id
-        INNER JOIN products p ON p.id = si.product_id AND p.company_id = @company_id
-        WHERE si.sale_id=@sale_id
-      `);
-
-    for (const it of itemsRes.recordset) {
-      const kind = String(it.kind ?? "").toLowerCase();
-      if (kind !== "product") continue;
-
-      const saleItemId = Number(it.id);
-      const qty = Number(it.quantity);
-
-      if (!Number.isFinite(qty) || qty <= 0) {
-        await tx.rollback();
-        throw new Error("Invalid item quantity");
-      }
-
-      // enquanto sua SP for INT, exigimos inteiro
-      if (!Number.isInteger(qty)) {
-        await tx.rollback();
-        throw new Error("Non-integer quantity not supported yet");
-      }
-
+    for (const item of items) {
+      const lineTotal = fromCents(
+        Math.round(toCents(item.quantity) * toCents(item.unitPrice) / 10000)
+      );
       await new sql.Request(tx)
-        .input("company_id", args.companyId)
-        .input("product_id", Number(it.product_id))
-        .input("type", "IN")
-        .input("quantity", qty)
-        .input("source", "SALE_CANCEL")
-        .input("source_id", args.saleId)
-        .input("note", `Reversal IN from cancelled sale #${args.saleId}`)
-
-        // ✅ novos campos (ledger) + idempotência por item
-        .input("source_type", "SALE")
-        .input("reason", "RETURN")
-        .input("idempotency_key", `SALE_CANCEL:${args.saleId}:ITEM:${saleItemId}`)
-        .input("occurred_at", new Date().toISOString())
-
-        .execute("dbo.sp_inventory_move");
+        .input("sale_id",    sql.Int,           saleId)
+        .input("product_id", sql.Int,           item.productId ?? null)
+        .input("description",sql.NVarChar,      item.description)
+        .input("quantity",   sql.Decimal(15,4), item.quantity)
+        .input("unit_price", sql.Decimal(15,4), item.unitPrice)
+        .input("total",      sql.Decimal(15,4), lineTotal)
+        .input("unit",       sql.NVarChar(10),  item.unit ?? "UN")  // ← novo
+        .query(`
+          INSERT INTO dbo.sale_items
+            (sale_id, product_id, description, quantity, unit_price, total, unit)
+          VALUES
+            (@sale_id, @product_id, @description, @quantity, @unit_price, @total, @unit)
+        `);
     }
 
-    await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        UPDATE sales
-        SET status='cancelled'
-        WHERE company_id=@company_id AND id=@sale_id
-      `);
-
     await tx.commit();
-    return { data: { ok: true } };
+    return saleId;
   } catch (e) {
     await tx.rollback();
     throw e;
   }
 }
 
-export async function updateSale(args: {
-  companyId: number;
-  saleId: number;
-  notes?: string | null;
-  paymentMethodId?: number | null;
-  paymentTermId?: number | null;
-}) {
-  const pool = await getPool();
-
-  const r = await pool
-    .request()
-    .input("company_id", args.companyId)
-    .input("sale_id", args.saleId)
-    .input("notes", args.notes ?? null)
-    .input("payment_method_id", args.paymentMethodId ?? null)
-    .input("payment_term_id", args.paymentTermId ?? null)
+// ── replaceSaleItemsTx ───────────────────────────────────────
+export async function replaceSaleItemsTx(
+  tx:        sql.Transaction,
+  companyId: number,
+  saleId:    number,
+  items:     SaleCreate["items"]
+) {
+  await new sql.Request(tx)
+    .input("sale_id",    sql.Int, saleId)
+    .input("company_id", sql.Int, companyId)
     .query(`
-      UPDATE sales
-      SET
-        notes = COALESCE(@notes, notes),
-        payment_method_id = @payment_method_id,
-        payment_term_id = @payment_term_id
-      OUTPUT
-        INSERTED.id,
-        INSERTED.company_id,
-        INSERTED.customer_id,
-        INSERTED.quote_id,
-        INSERTED.status,
-        INSERTED.subtotal,
-        INSERTED.discount,
-        INSERTED.total,
-        INSERTED.notes,
-        INSERTED.created_at,
-        INSERTED.payment_method_id,
-        INSERTED.payment_term_id
-      WHERE company_id=@company_id AND id=@sale_id
+      DELETE si FROM dbo.sale_items si
+      JOIN dbo.sales s ON s.id = si.sale_id
+      WHERE si.sale_id = @sale_id AND s.company_id = @company_id
     `);
 
-  return r.recordset[0] ?? null;
+  for (const item of items) {
+    const lineTotal = fromCents(
+      Math.round(toCents(item.quantity) * toCents(item.unitPrice) / 10000)
+    );
+    await new sql.Request(tx)
+      .input("sale_id",    sql.Int,           saleId)
+      .input("product_id", sql.Int,           item.productId ?? null)
+      .input("description",sql.NVarChar,      item.description)
+      .input("quantity",   sql.Decimal(15,4), item.quantity)
+      .input("unit_price", sql.Decimal(15,4), item.unitPrice)
+      .input("total",      sql.Decimal(15,4), lineTotal)
+      .input("unit",       sql.NVarChar(10),  item.unit ?? "UN")  // ← novo
+      .query(`
+        INSERT INTO dbo.sale_items
+          (sale_id, product_id, description, quantity, unit_price, total, unit)
+        VALUES
+          (@sale_id, @product_id, @description, @quantity, @unit_price, @total, @unit)
+      `);
+  }
 }
 
-export async function closeSaleTx(args: { companyId: number; saleId: number }) {
+// ── updateSaleV2 ─────────────────────────────────────────────
+export async function updateSaleV2(
+  companyId:  number,
+  saleId:     number,
+  sellerId:   number | null,
+  sellerName: string | null,
+  patch:      Omit<SaleUpdate, "items" | "sellerId">,
+  items?:     SaleCreate["items"]
+) {
   const pool = await getPool();
-  const tx = new sql.Transaction(pool);
+  const tx   = new sql.Transaction(pool);
   await tx.begin();
 
   try {
-    const s = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        SELECT id, status
-        FROM sales WITH (UPDLOCK, ROWLOCK)
-        WHERE company_id=@company_id AND id=@sale_id
-      `);
-
-    const sale = s.recordset[0] ?? null;
-    if (!sale) {
-      await tx.rollback();
-      return { error: "SALE_NOT_FOUND" as const };
+    let finalItems = items;
+    if (!finalItems) {
+      const existing = await getSaleItems(companyId, saleId);
+      finalItems = existing.map(i => ({
+        productId:   i.productId ?? undefined,
+        description: i.description,
+        quantity:    i.quantity,
+        unitPrice:   i.unitPrice,
+        unit:        i.unit ?? undefined,
+      }));
     }
 
-    const status = String(sale.status ?? "").toLowerCase();
+    const { subtotal, discount, freight, total } =
+      calcTotals(finalItems, patch.discount ?? 0, patch.freightValue ?? 0);  // ← freight
 
-    if (status === "cancelled") {
-      await tx.rollback();
-      return { error: "SALE_CANCELLED" as const };
+    const req = new sql.Request(tx)
+      .input("company_id",     sql.Int,           companyId)
+      .input("sale_id",        sql.Int,           saleId)
+      .input("seller_id",      sql.Int,           sellerId)
+      .input("seller_name",    sql.NVarChar,      sellerName)
+      .input("subtotal",       sql.Decimal(15,4), subtotal)
+      .input("discount",       sql.Decimal(15,4), discount)
+      .input("freight_value",  sql.Decimal(15,4), freight)               // ← novo
+      .input("total",          sql.Decimal(15,4), total)
+      .input("payment_terms",  sql.NVarChar,      patch.paymentTerms  ?? null)
+      .input("payment_method", sql.NVarChar,      patch.paymentMethod ?? null)
+      .input("notes",          sql.NVarChar,      patch.notes         ?? null)
+      .input("internal_notes", sql.NVarChar(sql.MAX), patch.internalNotes ?? null); // ← novo
+
+    let customerSet = "";
+    if (patch.customerId) {
+      req.input("customer_id", sql.Int, patch.customerId);
+      customerSet = "customer_id = @customer_id,";
     }
 
-    if (status === "closed") {
-      await tx.rollback();
-      return { error: "SALE_ALREADY_CLOSED" as const };
-    }
+    await req.query(`
+      UPDATE dbo.sales SET
+        ${customerSet}
+        seller_id      = @seller_id,
+        seller_name    = @seller_name,
+        subtotal       = @subtotal,
+        discount       = @discount,
+        freight_value  = @freight_value,
+        total          = @total,
+        payment_terms  = @payment_terms,
+        payment_method = @payment_method,
+        notes          = @notes,
+        internal_notes = @internal_notes,
+        updated_at     = SYSUTCDATETIME()
+      WHERE company_id = @company_id AND id = @sale_id
+    `);
 
-    if (status !== "open") {
-      await tx.rollback();
-      return { error: "SALE_NOT_OPEN" as const };
-    }
-
-    const u = await new sql.Request(tx)
-      .input("company_id", args.companyId)
-      .input("sale_id", args.saleId)
-      .query(`
-        UPDATE sales
-        SET status='closed'
-        OUTPUT INSERTED.id, INSERTED.status
-        WHERE company_id=@company_id AND id=@sale_id AND status='open'
-      `);
+    if (items) await replaceSaleItemsTx(tx, companyId, saleId, items);
 
     await tx.commit();
-    return { data: u.recordset[0] };
   } catch (e) {
     await tx.rollback();
     throw e;
   }
 }
 
-
+// ── setSaleStatus ────────────────────────────────────────────
+export async function setSaleStatus(
+  companyId: number,
+  saleId:    number,
+  status:    "completed" | "cancelled"
+) {
+  const pool  = await getPool();
+  const tsCol = status === "completed" ? "completed_at" : "cancelled_at";
+  await pool.request()
+    .input("company_id", sql.Int,     companyId)
+    .input("sale_id",    sql.Int,     saleId)
+    .input("status",     sql.VarChar, status)
+    .query(`
+      UPDATE dbo.sales SET
+        status     = @status,
+        ${tsCol}   = SYSUTCDATETIME(),
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id AND id = @sale_id
+    `);
+}

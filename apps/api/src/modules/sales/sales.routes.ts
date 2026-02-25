@@ -1,59 +1,59 @@
 import type { FastifyInstance } from "fastify";
-import { requireAuth } from "../../config/prehandlers";
-import * as controller from "./sales.controller";
+import { requireAuth, requirePermission } from "../../config/prehandlers";
+import {
+  list, get, create, update,
+  complete, cancel,
+  createFromQuote, createFromOrder
+} from "./sales.controller";
 
 type IdParams = { id: string };
 
 export async function salesRoutes(app: FastifyInstance) {
-
-  app.post<{ Params: IdParams }>(
-    "/sales/:id/fiscal/issue",
-    { preHandler: requireAuth },
-    controller.issueFiscal
+  app.get(
+    "/sales",
+    { preHandler: [requireAuth, requirePermission("sales.read")] },
+    list
   );
-
-  app.get<{ Params: IdParams }>(
-    "/sales/:id/fiscal",
-    { preHandler: requireAuth },
-    controller.listFiscal
-  );
-
-  app.get("/sales", { preHandler: requireAuth }, controller.list);
 
   app.get<{ Params: IdParams }>(
     "/sales/:id",
-    { preHandler: requireAuth },
-    controller.get
+    { preHandler: [requireAuth, requirePermission("sales.read")] },
+    get
   );
 
-  app.post<{ Params: IdParams }>(
-    "/sales/from-quote/:id",
-    { preHandler: requireAuth },
-    controller.fromQuote
-  );
-
-  app.post<{ Params: IdParams }>(
-    "/sales/:id/cancel",
-    { preHandler: requireAuth },
-    controller.cancel
+  app.post(
+    "/sales",
+    { preHandler: [requireAuth, requirePermission("sales.create")] },
+    create
   );
 
   app.patch<{ Params: IdParams }>(
     "/sales/:id",
-    { preHandler: requireAuth },
-    controller.update
+    { preHandler: [requireAuth, requirePermission("sales.update")] },
+    update
   );
 
   app.post<{ Params: IdParams }>(
-  "/sales/:id/close",
-  { preHandler: requireAuth },
-  controller.close
-);
+    "/sales/:id/complete",
+    { preHandler: [requireAuth, requirePermission("sales.complete")] }, 
+    complete
+  );
 
-app.post<{ Params: IdParams }>(
-  "/sales/:id/installments/preview",
-  { preHandler: requireAuth },
-  controller.previewInstallments
-);
+  app.post<{ Params: IdParams }>(
+    "/sales/:id/cancel",
+    { preHandler: [requireAuth, requirePermission("sales.cancel")] },
+    cancel
+  );
 
+  app.post<{ Params: IdParams }>(
+    "/sales/from-quote/:id",
+    { preHandler: [requireAuth, requirePermission("sales.create")] },
+    createFromQuote
+  );
+
+  app.post<{ Params: IdParams }>(
+    "/sales/from-order/:id",
+    { preHandler: [requireAuth, requirePermission("sales.create")] },
+    createFromOrder
+  );
 }

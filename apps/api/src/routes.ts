@@ -1,3 +1,4 @@
+// apps/api/src/routes.ts
 import type { FastifyInstance } from "fastify";
 import { authRoutes } from "./modules/auth/auth.routes";
 import { companiesRoutes } from "./modules/companies/companies.routes";
@@ -16,7 +17,9 @@ import { fiscalRoutes } from "./modules/fiscal/fiscal.routes";
 import { ordersRoutes } from "./modules/orders/orders.routes";
 import { paymentTermsRoutes } from "./modules/payment_terms/payment_terms.routes";
 import { suppliersRoutes } from "./modules/suppliers/suppliers.routes";
-
+import { rolesRoutes } from "./modules/roles/roles.routes";
+import { usersRoutes } from "./modules/users/users.routes";
+import { companyModulesRoutes } from "./modules/company_modules/company_modules.routes";
 
 export async function routes(app: FastifyInstance) {
   await app.register(authRoutes);
@@ -36,4 +39,7 @@ export async function routes(app: FastifyInstance) {
   await app.register(ordersRoutes);
   await app.register(paymentTermsRoutes);
   await app.register(suppliersRoutes);
+  await app.register(rolesRoutes);
+  await app.register(usersRoutes);
+  await app.register(companyModulesRoutes);
 }

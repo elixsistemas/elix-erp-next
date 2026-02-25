@@ -4,6 +4,8 @@ import type { CompanyCreate, CompanyUpdate } from "./companies.schema";
 
 export type Company = {
   id: number;
+  logo_base64?: string | null;
+  logo_mime?:   string | null;
   name: string;
   cnpj: string | null;
   created_at: string;
@@ -42,7 +44,7 @@ export async function listCompanies(companyId: number): Promise<Company[]> {
         legal_name, trade_name, ie, im,
         email, phone, website,
         address_line1, address_line2, district, city, state, zip_code, country,
-        default_bank_account_id, updated_at
+        default_bank_account_id, updated_at, logo_base64, logo_mime
       FROM dbo.companies
       WHERE id=@id AND is_active=1 AND deleted_at IS NULL
     `);
