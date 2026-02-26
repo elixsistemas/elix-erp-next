@@ -1,4 +1,3 @@
-import * as React from "react";
 import { Input } from "@/components/ui/input";
 import { onlyDigits } from "../digits";
 import { maskCPF, maskCNPJ } from "../masks";

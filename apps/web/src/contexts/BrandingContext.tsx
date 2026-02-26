@@ -79,7 +79,10 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     try {
       // 🔥 seu backend resolve slug via query/header/host.
-      const data = await api<Branding>(`/branding?company=${encodeURIComponent(companySlug)}`);
+      // dentro do BrandingContext load()
+      const data = await api<Branding>(`/branding?company=${encodeURIComponent(companySlug)}`, {
+        auth: false,
+      });
       setBranding(data);
     } catch {
       setBranding(FALLBACK);

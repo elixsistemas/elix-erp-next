@@ -18,12 +18,19 @@ declare module "fastify" {
   }
 }
 
-const PUBLIC_PREFIXES = ["/auth/prelogin", "/auth/login", "/branding", "/health"] as const;
+const PUBLIC_PREFIXES = ["/auth/prelogin", "/auth/login", "/health"] as const;
+const PUBLIC_PATHS = ["/branding"] as const; // ✅ match exato
 const PUBLIC_METHODS = ["OPTIONS"] as const;
 
 function isPublic(req: FastifyRequest) {
   if ((PUBLIC_METHODS as readonly string[]).includes(req.method)) return true;
+
   const url = req.url.split("?")[0];
+
+  // ✅ rotas públicas por match exato (ex: /branding)
+  if ((PUBLIC_PATHS as readonly string[]).includes(url as any)) return true;
+
+  // ✅ rotas públicas por prefixo (ex: /auth/login)
   return (PUBLIC_PREFIXES as readonly string[]).some((p) => url.startsWith(p));
 }
 

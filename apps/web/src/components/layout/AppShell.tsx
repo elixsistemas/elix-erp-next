@@ -8,7 +8,10 @@ import { MobileSidebar } from "./MobileSidebar";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
-import { useBranding } from "@/contexts/BrandingContext"; // ajuste o path se estiver diferente
+import { useBranding } from "@/contexts/BrandingContext";
+
+// ✅ novo
+import { SwitchCompanyDialog } from "@/components/SwitchCompanyDialog";
 
 function pageTitleFromPath(pathname: string) {
   if (pathname.startsWith("/dashboard")) return "Dashboard";
@@ -20,13 +23,15 @@ function pageTitleFromPath(pathname: string) {
 export default function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const { logout, user } = useAuth();
+  const { logout, user, company } = useAuth();
   const { brand, isLoading: brandingLoading } = useBranding();
 
   const location = useLocation();
   const title = useMemo(() => pageTitleFromPath(location.pathname), [location.pathname]);
 
-  const displayName = brand?.display_name || "Elix Sistemas";
+  // ✅ nome “real” da empresa logada vem do AuthContext
+  const companyName = company?.name || "Empresa";
+  // ✅ logo/estilo vem do Branding (se houver)
   const logoUrl = brand?.logo_url || "/assets/elix-logo.png";
 
   const userInitials = useMemo(() => {
@@ -57,41 +62,42 @@ export default function AppShell() {
               <Menu size={22} />
             </button>
 
-            {/* Branding */}
+            {/* Branding (logo) + Empresa (nome real) */}
             <div className="flex items-center gap-2">
               <div
                 className="h-9 w-9 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 flex items-center justify-center"
-                title={displayName}
+                title={companyName}
               >
-                {/* se tiver logo */}
                 {logoUrl ? (
                   <img
                     src={logoUrl}
-                    alt={displayName}
+                    alt={companyName}
                     className="h-9 w-9 object-contain"
                     draggable={false}
                   />
                 ) : (
-                  <span className="font-bold">E</span>
+                  <span className="font-bold">{companyName?.[0] ?? "E"}</span>
                 )}
               </div>
 
               <div className="leading-tight">
                 <div className="font-semibold text-slate-800 dark:text-white">
-                  {brandingLoading ? "Carregando..." : displayName}
+                  {company ? companyName : (brandingLoading ? "Carregando..." : "Empresa")}
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {title}
-                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">{title}</div>
               </div>
             </div>
           </div>
 
           {/* User box */}
           <div className="flex items-center gap-3">
+            {/* ✅ botão trocar empresa */}
+            <div className="hidden sm:block">
+              <SwitchCompanyDialog />
+            </div>
+
             <div className="hidden sm:flex items-center gap-2">
               <Avatar className="h-8 w-8">
-                {/* opcional: se você tiver user.avatarUrl */}
                 <AvatarImage src={(user as any)?.avatarUrl || ""} alt={user?.name || "Usuário"} />
                 <AvatarFallback>{userInitials}</AvatarFallback>
               </Avatar>
@@ -100,9 +106,7 @@ export default function AppShell() {
                 <div className="text-sm font-medium text-slate-800 dark:text-white">
                   {user?.name || "Administrador"}
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {user?.email || ""}
-                </div>
+                <div className="text-xs text-slate-500 dark:text-slate-400">{user?.email || ""}</div>
               </div>
             </div>
 

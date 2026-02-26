@@ -162,8 +162,17 @@ export async function resolveSellerName(companyId: number, sellerId: number) {
   const { recordset } = await pool.request()
     .input("company_id", sql.Int, companyId)
     .input("id",         sql.Int, sellerId)
-    .query(`SELECT name FROM dbo.users
-            WHERE company_id = @company_id AND id = @id AND active = 1`);
+    .query(`
+      SELECT TOP 1 u.name
+      FROM dbo.users u
+      JOIN dbo.user_companies uc
+        ON uc.user_id = u.id
+       AND uc.company_id = @company_id
+       AND uc.active = 1
+      WHERE u.id = @id
+        AND u.active = 1
+    `);
+
   return (recordset[0]?.name as string) ?? null;
 }
 

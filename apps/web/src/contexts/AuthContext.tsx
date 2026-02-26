@@ -16,13 +16,6 @@ type Company = {
   name: string;
 };
 
-type MeResponse = {
-  user: User;
-  company: Company;
-  modules: string[];
-  permissions: string[];
-};
-
 type AuthContextType = {
   token: string | null;
   user: User | null;
@@ -63,21 +56,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
 
     try {
-      // ✅ garante que o token usado no fetch seja o mesmo do initialize
-      const me = await api<MeResponse>("/auth/me", {
-        auth: false, // vamos mandar manualmente pra não depender de timing
-        headers: {
-          Authorization: `Bearer ${jwt}`,
-        },
+      const me = await api<any>("/auth/me", {
+        auth: false,
+        headers: { Authorization: `Bearer ${jwt}` },
       });
 
-      setUser(me.user);
-      setCompany(me.company);
+      setUser(me.user ?? null);
+      setCompany(me.company ?? null);
       setModules(Array.isArray(me.modules) ? me.modules : []);
-      setPermissions(Array.isArray(me.permissions) ? me.permissions : []);
-    } catch (error) {
-      // se token inválido/expirado → limpa sessão
-      logout();
+
+      const perms = me.permissions ?? me.perms ?? [];
+      setPermissions(Array.isArray(perms) ? perms : []);
+    } catch {
+      // ✅ não chama logout aqui (evita efeitos colaterais em guards)
+      localStorage.removeItem("token");
+      setToken(null);
+      setUser(null);
+      setCompany(null);
+      setModules([]);
+      setPermissions([]);
     } finally {
       setIsLoading(false);
     }

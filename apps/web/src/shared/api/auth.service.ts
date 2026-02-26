@@ -1,7 +1,17 @@
 // src/shared/api/auth.service.ts
 import { api } from "@/shared/api/client";
 
-export type CompanyLite = { id: number; name: string };
+export async function listCompanies() {
+  return api<{ companies: CompanyLite[] }>("/auth/companies", { method: "GET", auth: true });
+}
+
+export async function switchCompany(companyId: number) {
+  return api<{ token: string }>("/auth/switch", {
+    method: "POST",
+    auth: true,
+    body: { companyId },
+  });
+}
 
 export type PreloginResponse = {
   loginTicket: string;
@@ -12,25 +22,31 @@ export type LoginResponse = {
   token: string;
 };
 
-export async function prelogin(email: string, password: string) {
-  const data = await api("/auth/prelogin", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
+export type CompanyLite = { id: number; name: string };
 
-  return data as PreloginResponse;
+export async function prelogin(email: string, password: string) {
+  return api<{ loginTicket: string; companies: CompanyLite[] }>(`/auth/prelogin`, {
+    method: "POST",
+    auth: false,
+    body: { email, password },
+  });
 }
 
 export async function finalizeLogin(loginTicket: string, companyId: number) {
-  const data = await api("/auth/login", {
+  return api<{ token: string }>(`/auth/login`, {
     method: "POST",
-    body: JSON.stringify({ loginTicket, companyId }),
+    auth: false,
+    body: { loginTicket, companyId },
   });
+}
 
-  const token =
-    (data as any)?.token ?? (data as any)?.accessToken ?? (data as any)?.data?.token;
+export type SessionMe = {
+  userId: number;
+  companyId: number;
+  roles: string[];
+  perms: string[];
+};
 
-  if (!token) throw new Error("Token não retornado pelo servidor");
-
-  return { token } as LoginResponse;
+export function getMe() {
+  return api<SessionMe>("/auth/me", { method: "GET", auth: true });
 }

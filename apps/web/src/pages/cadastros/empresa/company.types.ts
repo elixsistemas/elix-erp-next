@@ -2,6 +2,9 @@ export type Company = {
   id: number;
   name: string;
 
+  logo_base64?: string | null;
+  logo_mime?:   string | null;
+
   cnpj?: string | null;
 
   legal_name?: string | null;
@@ -33,6 +36,8 @@ export type Company = {
 export type CompanyUpdate = Partial<Pick<
   Company,
   | "name"
+  | "logo_base64"
+  | "logo_mime"
   | "cnpj"
   | "legal_name"
   | "trade_name"

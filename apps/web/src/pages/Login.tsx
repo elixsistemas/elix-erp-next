@@ -1,10 +1,8 @@
 // src/pages/Login.tsx
 "use client";
-
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,11 +18,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranding } from "@/contexts/BrandingContext";
 
-import {
-  prelogin,
-  finalizeLogin,
-  type CompanyLite,
-} from "@/shared/api/auth.service";
+import { prelogin, finalizeLogin, type CompanyLite } from "@/shared/api/auth.service";
 import { getBrandingByCompany } from "@/shared/api/branding.service";
 
 export default function Login() {
@@ -39,6 +33,13 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    document.querySelectorAll("[data-radix-portal]").forEach((el) => el.remove());
+    document.body.style.pointerEvents = "";
+    document.body.style.overflow = "";
+    document.body.removeAttribute("data-scroll-locked");
+  }, []);
+
   const { login } = useAuth();
   const { brand, setBranding, companySlug } = useBranding();
   const navigate = useNavigate();
@@ -48,21 +49,18 @@ export default function Login() {
 
   async function applyCompanyBranding(companyId: number) {
     try {
-        const data = await getBrandingByCompany(companyId);
-        setBranding(data);
-    } catch {
-      // mantém o branding atual (fallback/tenant)
-    }
+      const data = await getBrandingByCompany(companyId);
+      setBranding(data);
+    } catch {}
   }
 
   async function runFinalizeLogin(ticket: string, companyId: number) {
-    // identidade viva primeiro
-    await applyCompanyBranding(companyId);
-
     const { token } = await finalizeLogin(ticket, companyId);
 
-    // ⚠️ login é async: evita corrida com navigate
+    localStorage.removeItem("token"); // ✅ hard reset do contexto anterior
     await login(token);
+
+    await applyCompanyBranding(companyId);
 
     toast.success("Login realizado com sucesso!");
     navigate("/dashboard", { replace: true });
@@ -108,6 +106,11 @@ export default function Login() {
       toast.error("Selecione uma empresa");
       return;
     }
+    if (!loginTicket) {
+      toast.error("Sessão expirada. Faça login novamente.");
+      handleBackToStep1();
+      return;
+    }
 
     setLoading(true);
     try {
@@ -126,7 +129,6 @@ export default function Login() {
     setLoginTicket("");
     setCompanies([]);
     setSelectedCompanyId(null);
-    // opcional: limpar senha por segurança
     setPassword("");
   };
 
@@ -254,23 +256,21 @@ export default function Login() {
                       file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground
                       focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
                       disabled:cursor-not-allowed disabled:opacity-50"
-                    value={selectedCompanyId ?? ""}
-                    onChange={async (e) => {
-                      const id = Number(e.target.value);
-                      setSelectedCompanyId(id);
-                      if (id) await applyCompanyBranding(id);
-                    }}
-                    disabled={loading}
-                    required
-                  >
-                    <option value="" disabled>
-                      Escolha uma empresa
-                    </option>
-                    {companies.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
+                      value={selectedCompanyId ?? ""}
+                      onChange={async (e) => {
+                        const id = Number(e.target.value);
+                        setSelectedCompanyId(Number.isFinite(id) ? id : null);
+
+                        const hasToken = !!localStorage.getItem("token");
+                        if (Number.isFinite(id) && hasToken) await applyCompanyBranding(id);
+                      }}
+                    >
+                      <option value="" disabled>Escolha uma empresa</option>
+                      {companies.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
 

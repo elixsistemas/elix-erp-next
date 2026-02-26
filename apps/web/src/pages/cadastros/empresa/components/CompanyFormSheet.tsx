@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Search } from "lucide-react";
 import { toast } from "sonner";
-
+import { LogoUpload } from "./LogoUpload";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,6 +65,7 @@ export function CompanyFormSheet(props: Props) {
 
         allow_negative_stock: props.company.allow_negative_stock ?? false,
         is_active: props.company.is_active ?? true,
+        logo_base64: props.company.logo_base64 ?? null,
       });
     }
   }, [props.open, props.company]);
@@ -142,6 +143,13 @@ export function CompanyFormSheet(props: Props) {
             </TabsList>
 
             <TabsContent value="identidade" className="mt-4 space-y-4">
+              <div className="space-y-2">
+                <Label>Logo da empresa</Label>
+                <LogoUpload
+                    currentLogo={form.logo_base64 ?? null}
+                    onChanged={(url) => setForm(f => ({ ...f, logo_base64: url ?? undefined }))} />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
                   <Label>Nome interno</Label>

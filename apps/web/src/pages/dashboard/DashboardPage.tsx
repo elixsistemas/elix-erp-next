@@ -20,17 +20,24 @@ export default function DashboardPage() {
         month={vm.month}
         onChange={vm.setMonth}
         onNow={() => vm.setMonth(currentYYYYMM())}
-        disabled={vm.loading}
+        disabled={vm.loading || !vm.canViewFinance}
       />
 
-      <FinanceKpis
-        totalBalance={vm.totalBalance}
-        inflowMonth={vm.inflowMonth}
-        outflowMonth={vm.outflowMonth}
-        netMonth={vm.netMonth}
-      />
-
-      <AccountsTable accounts={vm.accounts} totalBalance={vm.totalBalance} />
+      {vm.canViewFinance ? (
+        <>
+          <FinanceKpis
+            totalBalance={vm.totalBalance}
+            inflowMonth={vm.inflowMonth}
+            outflowMonth={vm.outflowMonth}
+            netMonth={vm.netMonth}
+          />
+          <AccountsTable accounts={vm.accounts} totalBalance={vm.totalBalance} />
+        </>
+      ) : (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">
+          Você não tem permissão para visualizar o painel financeiro nesta empresa.
+        </div>
+      )}
     </div>
   );
 }

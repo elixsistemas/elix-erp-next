@@ -1,3 +1,4 @@
+import sql from "mssql";
 import { getPool } from "../../config/db";
 
 export async function listRoles(companyId: number) {
@@ -47,12 +48,31 @@ export async function updateRole(companyId: number, id: number, data: Partial<{ 
 
 export async function deleteRole(companyId: number, id: number) {
   const pool = await getPool();
-  // remove vínculos primeiro
-  await pool.request().input("id", id).query(`DELETE FROM dbo.role_permissions WHERE role_id=@id; DELETE FROM dbo.user_roles WHERE role_id=@id;`);
-  const res = await pool.request().input("companyId", companyId).input("id", id).query(`
-    DELETE FROM dbo.roles WHERE id=@id AND company_id=@companyId;
-    SELECT @@ROWCOUNT AS affected;
-  `);
+
+  // garante que a role pertence à empresa ANTES de apagar vínculos
+  const chk = await pool.request()
+    .input("companyId", companyId)
+    .input("id", id)
+    .query(`SELECT id FROM dbo.roles WHERE id=@id AND company_id=@companyId`);
+
+  if (!chk.recordset?.length) return false;
+
+  // apaga SOMENTE vínculos dessa role (agora sabemos que é da empresa)
+  await pool.request()
+    .input("id", id)
+    .query(`
+      DELETE FROM dbo.role_permissions WHERE role_id=@id;
+      DELETE FROM dbo.user_roles WHERE role_id=@id;
+    `);
+
+  const res = await pool.request()
+    .input("companyId", companyId)
+    .input("id", id)
+    .query(`
+      DELETE FROM dbo.roles WHERE id=@id AND company_id=@companyId;
+      SELECT @@ROWCOUNT AS affected;
+    `);
+
   return (res.recordset?.[0]?.affected ?? 0) > 0;
 }
 
@@ -83,29 +103,46 @@ export async function setRolePermissions(companyId: number, roleId: number, perm
   const pool = await getPool();
 
   // garante role pertence à empresa
-  const chk = await pool.request().input("companyId", companyId).input("roleId", roleId).query(`
-    SELECT id FROM dbo.roles WHERE id=@roleId AND company_id=@companyId
-  `);
+  const chk = await pool.request()
+    .input("companyId", companyId)
+    .input("roleId", roleId)
+    .query(`SELECT id FROM dbo.roles WHERE id=@roleId AND company_id=@companyId`);
   if (!chk.recordset?.length) return null;
 
-  // resolve permission ids
-  const list = await pool.request().query(`SELECT id, code FROM dbo.permissions`);
-  const map = new Map<string, number>(list.recordset.map((r: any) => [String(r.code), Number(r.id)]));
+  // normaliza + remove duplicados
+  const codes = Array.from(
+    new Set(permissionCodes.map(c => String(c).trim()).filter(Boolean))
+  );
 
-  const ids = permissionCodes
-    .map(c => c.trim())
-    .filter(Boolean)
-    .map(c => map.get(c))
-    .filter((x): x is number => typeof x === "number");
+  // tabela temporária via TVP (Table-Valued Parameter)
+  const tvp = new sql.Table("dbo.PermissionCodeList");
+  tvp.columns.add("code", sql.NVarChar(80));
+  for (const c of codes) tvp.rows.add(c);
 
-  // substitui set (simples e previsível)
-  await pool.request().input("roleId", roleId).query(`DELETE FROM dbo.role_permissions WHERE role_id=@roleId`);
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
 
-  for (const pid of ids) {
-    await pool.request().input("roleId", roleId).input("pid", pid).query(`
-      INSERT INTO dbo.role_permissions(role_id, permission_id) VALUES(@roleId, @pid)
-    `);
+  try {
+    // 1) delete do set atual
+    await new sql.Request(tx)
+      .input("roleId", sql.Int, roleId)
+      .query(`DELETE FROM dbo.role_permissions WHERE role_id=@roleId;`);
+
+    // 2) insert em lote resolvendo ids por code
+    await new sql.Request(tx)
+      .input("roleId", sql.Int, roleId)
+      .input("codes", tvp)
+      .query(`
+        INSERT INTO dbo.role_permissions(role_id, permission_id)
+        SELECT @roleId, p.id
+        FROM dbo.permissions p
+        JOIN @codes c ON c.code = p.code;
+      `);
+
+    await tx.commit();
+    return true;
+  } catch (e) {
+    await tx.rollback();
+    throw e;
   }
-
-  return true;
 }

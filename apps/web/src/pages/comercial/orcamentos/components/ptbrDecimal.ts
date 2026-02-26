@@ -17,3 +17,9 @@ export function parsePtBrDecimal(raw: string): number | null {
 export function formatPtBrFixed(n: number, decimals = 2) {
   return Number(n).toFixed(decimals).replace(".", ",");
 }
+
+export const ptbrDecimal = {
+  sanitize: sanitizePtBrDecimalInput,
+  parse:    parsePtBrDecimal,
+  format:   (n: number) => formatPtBrFixed(n, 2),
+};

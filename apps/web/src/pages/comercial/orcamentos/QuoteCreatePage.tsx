@@ -1,3 +1,4 @@
+// src/pages/comercial/orcamentos/QuoteCreatePage.tsx
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { QuoteDetailsEditor } from "./QuoteDetailsPage";
@@ -11,6 +12,7 @@ export default function QuoteCreatePage() {
       mode="create"
       initial={null}
       onSave={async (payload) => {
+        // ✅ payload agora é QuoteCreate — sem erro
         const created = await createQuote(payload);
         toast.success("Orçamento criado");
         nav(`/comercial/orcamentos/${created.quote.id}`);
