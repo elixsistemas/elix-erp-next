@@ -1,4 +1,5 @@
 import { getPool } from "../../config/db";
+import sql from "mssql";
 import bcrypt from "bcryptjs";
 
 export async function listUsers(companyId: number) {
@@ -272,4 +273,208 @@ export async function getUserRoles(companyId: number, userId: number) {
     `);
 
   return res.recordset;
+}
+
+// ✅ NOVO: checa se um usuário (actor/admin) é ativo em uma empresa
+export async function userIsActiveInCompany(userId: number, companyId: number) {
+  const pool = await getPool();
+  const r = await pool.request()
+    .input("userId", userId)
+    .input("companyId", companyId)
+    .query(`
+      SELECT TOP 1 1 AS ok
+      FROM dbo.user_companies
+      WHERE user_id=@userId AND company_id=@companyId AND active=1
+    `);
+  return !!r.recordset?.[0]?.ok;
+}
+
+// ✅ NOVO: lookup por e-mail (sem vazar empresas que o admin não acessa)
+export async function lookupUserByEmail(companyId: number, actorUserId: number, emailRaw: string) {
+  const pool = await getPool();
+  const email = String(emailRaw).toLowerCase().trim();
+
+  const u = await pool.request()
+    .input("email", email)
+    .query(`
+      SELECT TOP 1 id, name, email, active, created_at
+      FROM dbo.users
+      WHERE email=@email
+    `);
+
+  const user = u.recordset?.[0] ?? null;
+  if (!user) return { exists: false, linked: false, user: null, importSources: [] as any[] };
+
+  const link = await pool.request()
+    .input("companyId", companyId)
+    .input("userId", user.id)
+    .query(`
+      SELECT TOP 1 1 AS ok
+      FROM dbo.user_companies
+      WHERE company_id=@companyId AND user_id=@userId AND active=1
+    `);
+
+  const linked = !!link.recordset?.[0]?.ok;
+
+  // ✅ somente empresas onde o ALVO e o ACTOR estão ativos
+  const importSources = await pool.request()
+    .input("targetUserId", user.id)
+    .input("actorUserId", actorUserId)
+    .query(`
+      SELECT uc.company_id AS companyId, c.name
+      FROM dbo.user_companies uc
+      JOIN dbo.user_companies uc2
+        ON uc2.company_id = uc.company_id
+       AND uc2.user_id = @actorUserId
+       AND uc2.active = 1
+      JOIN dbo.companies c ON c.id = uc.company_id
+      WHERE uc.user_id=@targetUserId
+        AND uc.active=1
+        AND c.is_active=1
+        AND c.deleted_at IS NULL
+      ORDER BY c.name
+    `);
+
+  return {
+    exists: true,
+    linked,
+    user: { id: user.id, name: user.name, email: user.email, active: user.active, created_at: user.created_at },
+    importSources: importSources.recordset ?? [],
+  };
+}
+
+// ✅ NOVO: cria/vincula por e-mail sem resetar senha indevidamente
+export async function linkUserToCompany(
+  companyId: number,
+  data: { email: string; name?: string; password?: string; active?: boolean }
+) {
+  const pool = await getPool();
+
+  const email = data.email.toLowerCase().trim();
+  const active = data.active === false ? 0 : 1;
+
+  const tx = pool.transaction();
+  await tx.begin();
+
+  try {
+    const existing = await tx.request()
+      .input("email", email)
+      .query(`
+        SELECT TOP 1 id, name, email, active, created_at
+        FROM dbo.users
+        WHERE email=@email
+      `);
+
+    let userId: number;
+
+    if (existing.recordset.length > 0) {
+      userId = existing.recordset[0].id;
+
+      // ativa/desativa global se quiser (mantém teu padrão)
+      await tx.request()
+        .input("id", userId)
+        .input("active", active)
+        .query(`UPDATE dbo.users SET active=@active WHERE id=@id`);
+
+      // NÃO mexe em senha aqui (segurança)
+    } else {
+      // Se não existe, aí sim precisa senha
+      if (!data.password) {
+        await tx.rollback();
+        throw new Error("Password required for new user");
+      }
+      const hash = await bcrypt.hash(data.password, 10);
+
+      const created = await tx.request()
+        .input("name", data.name ?? email.split("@")[0])
+        .input("email", email)
+        .input("password_hash", hash)
+        .input("active", active)
+        .query(`
+          INSERT INTO dbo.users(name, email, password_hash, active, created_at)
+          OUTPUT INSERTED.id
+          VALUES(@name, @email, @password_hash, @active, sysutcdatetime())
+        `);
+
+      userId = created.recordset[0].id;
+    }
+
+    // vínculo na empresa: role_code mantém compatibilidade (não usamos como permissão real)
+    await tx.request()
+      .input("userId", userId)
+      .input("companyId", companyId)
+      .input("active", active)
+      .query(`
+        MERGE dbo.user_companies AS target
+        USING (SELECT @userId AS user_id, @companyId AS company_id) AS src
+          ON target.user_id = src.user_id AND target.company_id = src.company_id
+        WHEN MATCHED THEN
+          UPDATE SET active=@active
+        WHEN NOT MATCHED THEN
+          INSERT (user_id, company_id, role_code, active, created_at)
+          VALUES (@userId, @companyId, 'user', @active, sysutcdatetime());
+      `);
+
+    // retorna no contexto da empresa
+    const out = await tx.request()
+      .input("userId", userId)
+      .input("companyId", companyId)
+      .query(`
+        SELECT TOP 1
+          u.id, u.name, u.email, u.active, u.created_at,
+          uc.company_id, uc.role_code AS role
+        FROM dbo.users u
+        JOIN dbo.user_companies uc
+          ON uc.user_id=u.id AND uc.company_id=@companyId
+        WHERE u.id=@userId
+      `);
+
+    await tx.commit();
+    return out.recordset[0];
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
+}
+
+// ✅ NOVO: importar roles (por code) de outra empresa para a empresa atual
+export async function importUserRolesByCompanyCode(args: {
+  targetCompanyId: number;
+  fromCompanyId: number;
+  userId: number;
+}) {
+  const pool = await getPool();
+
+  // 1) pega roles do usuário na empresa origem (id/code/name)
+  const srcRoles = await getUserRoles(args.fromCompanyId, args.userId);
+  const codes = Array.from(new Set((srcRoles ?? []).map((r: any) => String(r.code).toLowerCase())));
+
+  if (codes.length === 0) {
+    // limpa roles no destino (ou deixa como está). Aqui vou manter SEM ALTERAR.
+    return { imported: 0, ignored: 0 };
+  }
+
+  // 2) resolve codes -> roleIds no destino via TVP (reusa dbo.PermissionCodeList pq é só (code nvarchar))
+  const tvp = new sql.Table("dbo.PermissionCodeList");
+  tvp.columns.add("code", sql.NVarChar(80));
+  for (const c of codes) tvp.rows.add(c);
+
+  const r = await pool.request()
+    .input("companyId", sql.Int, args.targetCompanyId)
+    .input("codes", tvp)
+    .query(`
+      SELECT r.id, r.code
+      FROM dbo.roles r
+      JOIN @codes c ON c.code = r.code
+      WHERE r.company_id=@companyId AND r.active=1
+    `);
+
+  const destIds = (r.recordset ?? []).map((x: any) => Number(x.id));
+  const foundCodes = new Set((r.recordset ?? []).map((x: any) => String(x.code).toLowerCase()));
+  const ignored = codes.filter(c => !foundCodes.has(c));
+
+  // 3) aplica no destino (TX já existe dentro de setUserRoles)
+  await setUserRoles(args.targetCompanyId, args.userId, destIds);
+
+  return { imported: destIds.length, ignored: ignored.length, ignoredCodes: ignored };
 }

@@ -10,4 +10,18 @@ export async function usersRoutes(app: FastifyInstance) {
 
   app.get("/users/:id/roles", { preHandler: [requireAuth, requirePermission("users.read")] }, controller.roles);
   app.put("/users/:id/roles", { preHandler: [requireAuth, requirePermission("users.update")] }, controller.setRoles);
+
+  // ✅ NOVO: lookup por e-mail (para o front decidir criar vs vincular)
+  app.get(
+    "/users/lookup",
+    { preHandler: [requireAuth, requirePermission("users.read")] },
+    controller.lookupByEmail
+  );
+
+  // ✅ NOVO: vincular (e opcionalmente importar roles)
+  app.post(
+    "/users/link",
+    { preHandler: [requireAuth, requirePermission("users.create")] },
+    controller.link
+  );
 }

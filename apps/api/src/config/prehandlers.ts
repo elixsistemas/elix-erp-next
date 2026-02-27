@@ -18,19 +18,12 @@ declare module "fastify" {
   }
 }
 
-const PUBLIC_PREFIXES = ["/auth/prelogin", "/auth/login", "/health"] as const;
-const PUBLIC_PATHS = ["/branding"] as const; // ✅ match exato
+const PUBLIC_PREFIXES = ["/auth/prelogin", "/auth/login", "/branding", "/health"] as const;
 const PUBLIC_METHODS = ["OPTIONS"] as const;
 
 function isPublic(req: FastifyRequest) {
   if ((PUBLIC_METHODS as readonly string[]).includes(req.method)) return true;
-
   const url = req.url.split("?")[0];
-
-  // ✅ rotas públicas por match exato (ex: /branding)
-  if ((PUBLIC_PATHS as readonly string[]).includes(url as any)) return true;
-
-  // ✅ rotas públicas por prefixo (ex: /auth/login)
   return (PUBLIC_PREFIXES as readonly string[]).some((p) => url.startsWith(p));
 }
 
@@ -67,12 +60,13 @@ export const requireAuth: preHandlerHookHandler = async (req, rep) => {
 };
 
 export function requirePermission(code: string): preHandlerHookHandler {
+  const need = code.trim().toLowerCase();
+
   return async (req, rep) => {
     if (!req.auth) return rep.code(401).send({ message: "Unauthorized" });
 
-    if (!req.auth.perms.includes(code)) {
-      return rep.code(403).send({ message: "Forbidden", missing: code });
-    }
+    const ok = req.auth.perms.some((p) => p.trim().toLowerCase() === need);
+    if (!ok) return rep.code(403).send({ message: "Forbidden", missing: code });
   };
 }
 

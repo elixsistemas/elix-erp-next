@@ -70,8 +70,12 @@ export async function me(req: FastifyRequest, rep: FastifyReply) {
         u.id,
         u.name,
         u.email,
+
         c.id   AS company_id,
-        c.name AS company_name
+        c.name AS company_name,
+        c.logo_base64,
+        c.logo_mime
+
       FROM dbo.users u
       JOIN dbo.user_companies uc
         ON uc.user_id = u.id
@@ -107,6 +111,8 @@ export async function me(req: FastifyRequest, rep: FastifyReply) {
     company: {
       id: row.company_id,
       name: row.company_name,
+      logo_base64: row.logo_base64 ?? null,
+      logo_mime: row.logo_mime ?? null,
     },
     modules,
     permissions,

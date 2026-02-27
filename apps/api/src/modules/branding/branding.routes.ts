@@ -8,10 +8,13 @@ import { requireAuth, requirePermission } from "../../config/prehandlers";
 type CompanyQuery = { companyId: number };
 
 export async function brandingRoutes(app: FastifyInstance) {
-  // ✅ Público: usado antes do login (tenant por query/host/header)
   app.get<{ Querystring: BrandingQuery }>("/branding", controller.branding);
 
-  // ✅ Protegido: usado depois do login (companyId)
+  app.get<{ Querystring: CompanyQuery }>(
+    "/branding/public/company",
+    controller.brandingByCompanyId
+  );
+
   const readCompanyBranding: preHandlerHookHandler[] = [
     requireAuth,
     requirePermission("branding.read"),
