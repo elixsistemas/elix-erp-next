@@ -16,6 +16,7 @@ export const ProductCreateSchema = z.object({
 
   sku: z.string().trim().min(1).max(60).optional().nullable(),
   ncm: z.string().trim().min(1).max(20).optional().nullable(),
+  ncmId: z.coerce.number().int().positive().optional().nullable(),
   ean: z.string().trim().min(1).max(30).optional().nullable(),
 
   // preços

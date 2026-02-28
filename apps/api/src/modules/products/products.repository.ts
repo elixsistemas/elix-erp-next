@@ -63,7 +63,7 @@ export async function listProducts(args: { companyId: number } & ProductListQuer
   const r = await req.query(`
     SELECT TOP (@limit)
       id, company_id,
-      name, sku, ncm, ean,
+      name, sku, ncm, ncm_id, ean,
       description, uom,
       cest, fiscal_json,
       image_url,
@@ -88,7 +88,7 @@ export async function getProduct(companyId: number, id: number): Promise<Product
     .query(`
       SELECT
         id, company_id,
-        name, sku, ncm, ean,
+        name, sku, ncm, ncm_id, ean,
         description, uom,
         cest, fiscal_json,
         image_url,
@@ -103,16 +103,31 @@ export async function getProduct(companyId: number, id: number): Promise<Product
   return (r.recordset[0] as Product) ?? null;
 }
 
-export async function createProduct(companyId: number, data: ProductCreate): Promise<Product | { error: "SKU_ALREADY_EXISTS" | "EAN_ALREADY_EXISTS" }> {
+export async function createProduct(
+  companyId: number,
+  data: ProductCreate
+): Promise<Product | { error: "SKU_ALREADY_EXISTS" | "EAN_ALREADY_EXISTS" }> {
   const pool = await getPool();
 
   try {
-    const r = await pool
-      .request()
+    // resolve NCM code (mantém compat com data.ncm legado)
+    let ncmCode: string | null = data.ncm ?? null;
+    const ncmId: number | null =
+      typeof (data as any).ncmId === "number" ? (data as any).ncmId : null;
+
+    if (ncmId) {
+      const ncmRes = await pool.request()
+        .input("ncm_id", sql.Int, ncmId)
+        .query(`SELECT TOP 1 code FROM dbo.fiscal_ncm WHERE id=@ncm_id AND active=1`);
+      ncmCode = (ncmRes.recordset[0]?.code as string) ?? null;
+    }
+
+    const r = await pool.request()
       .input("company_id", sql.Int, companyId)
       .input("name", sql.NVarChar(200), data.name)
       .input("sku", sql.NVarChar(60), data.sku ?? null)
-      .input("ncm", sql.NVarChar(20), data.ncm ?? null)
+      .input("ncm", sql.NVarChar(20), ncmCode)
+      .input("ncm_id", sql.Int, ncmId) // ✅ novo
       .input("ean", sql.NVarChar(30), data.ean ?? null)
       .input("description", sql.NVarChar(2000), data.description ?? null)
       .input("uom", sql.NVarChar(10), data.uom ?? null)
@@ -130,7 +145,7 @@ export async function createProduct(companyId: number, data: ProductCreate): Pro
       .input("active", sql.Bit, data.active ?? true)
       .query(`
         INSERT INTO dbo.products (
-          company_id, name, sku, ncm, ean,
+          company_id, name, sku, ncm_id, ncm, ean,
           description, uom,
           cest, fiscal_json,
           image_url,
@@ -141,7 +156,7 @@ export async function createProduct(companyId: number, data: ProductCreate): Pro
         )
         OUTPUT INSERTED.*
         VALUES (
-          @company_id, @name, @sku, @ncm, @ean,
+          @company_id, @name, @sku, @ncm_id, @ncm, @ean,
           @description, @uom,
           @cest, @fiscal_json,
           @image_url,
@@ -163,18 +178,36 @@ export async function createProduct(companyId: number, data: ProductCreate): Pro
   }
 }
 
-export async function updateProduct(companyId: number, id: number, data: ProductUpdate): Promise<Product | { error: "SKU_ALREADY_EXISTS" | "EAN_ALREADY_EXISTS" } | null> {
+export async function updateProduct(
+  companyId: number,
+  id: number,
+  data: ProductUpdate
+): Promise<Product | { error: "SKU_ALREADY_EXISTS" | "EAN_ALREADY_EXISTS" } | null> {
   const pool = await getPool();
 
   try {
-    const r = await pool
-      .request()
+    const ncmId =
+      typeof (data as any).ncmId === "number" ? (data as any).ncmId : null;
+
+    // resolve ncmCode se veio ncmId; senão usa data.ncm (legado)
+    let ncmCode: string | null =
+      typeof data.ncm === "string" ? data.ncm : null;
+
+    if (ncmId) {
+      const ncmRes = await pool.request()
+        .input("ncm_id", sql.Int, ncmId)
+        .query(`SELECT TOP 1 code FROM dbo.fiscal_ncm WHERE id=@ncm_id AND active=1`);
+      ncmCode = (ncmRes.recordset[0]?.code as string) ?? null;
+    }
+
+    const r = await pool.request()
       .input("company_id", sql.Int, companyId)
       .input("id", sql.Int, id)
 
       .input("name", sql.NVarChar(200), data.name ?? null)
       .input("sku", sql.NVarChar(60), data.sku ?? null)
-      .input("ncm", sql.NVarChar(20), data.ncm ?? null)
+      .input("ncm", sql.NVarChar(20), ncmCode) // pode ser null
+      .input("ncm_id", sql.Int, ncmId)         // pode ser null
       .input("ean", sql.NVarChar(30), data.ean ?? null)
 
       .input("description", sql.NVarChar(2000), data.description ?? null)
@@ -201,7 +234,13 @@ export async function updateProduct(companyId: number, id: number, data: Product
         SET
           name = COALESCE(@name, name),
           sku = COALESCE(@sku, sku),
+
+          -- se veio ncmId, atualiza ncm_id; senão preserva
+          ncm_id = COALESCE(@ncm_id, ncm_id),
+
+          -- se veio ncmId ou ncm texto, atualiza ncm; senão preserva
           ncm = COALESCE(@ncm, ncm),
+
           ean = COALESCE(@ean, ean),
 
           description = COALESCE(@description, description),

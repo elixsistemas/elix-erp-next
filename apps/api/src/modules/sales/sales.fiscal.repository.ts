@@ -1,5 +1,90 @@
 import { getPool } from "../../config/db";
 import sql from "mssql";
+import { runFiscalEngineV01 } from "../fiscal/engine/fiscal-engine.service";
+import {
+  getCompanyUF,
+  getCustomerDestUF,
+  getActiveCompanyTaxProfile,
+  upsertFiscalCalculation,
+  hasFiscalSnapshotTx,
+} from "../fiscal/engine/fiscal-engine.repository";
+
+const ENGINE_VERSION = "0.1" as const;
+
+async function ensureSaleSnapshotTx(tx: sql.Transaction, companyId: number, saleId: number) {
+  const already = await hasFiscalSnapshotTx(tx, companyId, "sale", saleId, ENGINE_VERSION);
+  if (already) return;
+
+  const saleRes = await new sql.Request(tx)
+    .input("company_id", companyId)
+    .input("sale_id", saleId)
+    .query(`
+      SELECT TOP 1 *
+      FROM dbo.sales
+      WHERE company_id=@company_id AND id=@sale_id
+    `);
+
+  const s = saleRes.recordset[0];
+  if (!s) throw new Error("SALE_NOT_FOUND");
+
+  const itemsRes = await new sql.Request(tx)
+    .input("company_id", companyId)
+    .input("sale_id", saleId)
+    .query(`
+      SELECT
+        si.id,
+        si.product_id,
+        si.description,
+        si.quantity,
+        si.unit_price,
+        si.total,
+        p.ncm_id,
+        p.cest,
+        p.fiscal_json
+      FROM dbo.sale_items si
+      JOIN dbo.sales s ON s.id = si.sale_id AND s.company_id = @company_id
+      LEFT JOIN dbo.products p ON p.id = si.product_id AND p.company_id = s.company_id
+      WHERE si.sale_id = @sale_id
+    `);
+
+  const originUF = await getCompanyUF(companyId, tx);
+  const destUF = await getCustomerDestUF(companyId, Number(s.customer_id), tx);
+  const taxProfile = await getActiveCompanyTaxProfile(companyId, tx);
+
+  const ctx = {
+    companyId,
+    sourceType: "sale" as const,
+    sourceId: saleId,
+    issuedAt: new Date().toISOString(),
+    originUF,
+    destUF,
+    crt: taxProfile?.crt ?? null,
+    icmsContributor: taxProfile?.icmsContributor ?? null,
+  };
+
+  const engineItems = itemsRes.recordset.map((r: any) => ({
+    lineId: Number(r.id),
+    productId: r.product_id ?? null,
+    description: r.description,
+    ncmId: r.ncm_id ?? null,
+    cest: r.cest ?? null,
+    qty: Number(r.quantity),
+    unitPrice: Number(r.unit_price),
+    total: Number(r.total),
+  }));
+
+  const result = runFiscalEngineV01(ctx, engineItems);
+
+  await upsertFiscalCalculation(
+    companyId,
+    "sale",
+    saleId,
+    result.engineVersion,
+    JSON.stringify(ctx),
+    JSON.stringify(result),
+    tx
+  );
+}
 
 export async function issueFiscalTx(args: {
   companyId: number;
@@ -8,71 +93,90 @@ export async function issueFiscalTx(args: {
 }) {
   const pool = await getPool();
   const tx = new sql.Transaction(pool);
+
+  const companyId = Number(args.companyId);
+  const saleId = Number(args.saleId);
+  const docType = args.type;
+
   await tx.begin();
 
   try {
     // ✅ garante multi-empresa: venda pertence à empresa
     const saleRes = await new sql.Request(tx)
-    .input("company_id", args.companyId)
-    .input("sale_id", args.saleId)
-    .query(`
-        SELECT id, company_id
-        FROM sales
+      .input("company_id", companyId)
+      .input("sale_id", saleId)
+      .query(`
+        SELECT TOP 1 id, company_id
+        FROM dbo.sales
         WHERE company_id=@company_id AND id=@sale_id
-    `);
+      `);
 
     const sale = saleRes.recordset[0];
     if (!sale) throw new Error("SALE_NOT_FOUND");
 
-    // 2) Carrega itens
+    // ✅ snapshot obrigatório antes de emitir
+    await ensureSaleSnapshotTx(tx, companyId, saleId);
+
+    // 2) Carrega itens (blindado por company via JOIN em sales)
     const itemsRes = await new sql.Request(tx)
-      .input("sale_id", args.saleId)
+      .input("company_id", companyId)
+      .input("sale_id", saleId)
       .query(`
-        SELECT si.id, si.description, si.quantity, si.unit_price, si.total, p.kind
-        FROM sale_items si
-        INNER JOIN products p ON p.id = si.product_id
+        SELECT
+          si.id,
+          si.description,
+          si.quantity,
+          si.unit_price,
+          si.total,
+          p.kind
+        FROM dbo.sale_items si
+        JOIN dbo.sales s
+          ON s.id = si.sale_id
+         AND s.company_id = @company_id
+        INNER JOIN dbo.products p
+          ON p.id = si.product_id
+         AND p.company_id = s.company_id
         WHERE si.sale_id=@sale_id
       `);
 
     const items = itemsRes.recordset;
 
-    const products = items.filter(i => i.kind === "product");
-    const services = items.filter(i => i.kind === "service");
+    const products = items.filter((i: any) => i.kind === "product");
+    const services = items.filter((i: any) => i.kind === "service");
 
     const createdDocs: any[] = [];
 
     async function createDocument(type: "NFE" | "NFSE", docItems: any[]) {
       if (!docItems.length) return;
 
-        // ✅ Regra B: impede duplicidade (por empresa + venda + tipo) se já existir ativo
-        const exists = await new sql.Request(tx)
-        .input("company_id", args.companyId)
-        .input("sale_id", args.saleId)
+      // ✅ Regra B: impede duplicidade (por empresa + venda + tipo) se já existir ativo
+      const exists = await new sql.Request(tx)
+        .input("company_id", companyId)
+        .input("sale_id", saleId)
         .input("type", type)
         .query(`
-            SELECT TOP 1 id
-            FROM fiscal_documents
-            WHERE company_id=@company_id
+          SELECT TOP 1 id
+          FROM dbo.fiscal_documents
+          WHERE company_id=@company_id
             AND sale_id=@sale_id
             AND [type]=@type
             AND [status] IN ('draft','issued','error')
-            ORDER BY id DESC
+          ORDER BY id DESC
         `);
 
-        if (exists.recordset[0]) {
+      if (exists.recordset[0]) {
         const err = new Error(`FISCAL_ALREADY_EXISTS:${type}`);
         (err as any).code = "FISCAL_ALREADY_EXISTS";
         (err as any).docType = type;
         throw err;
-        }
-
+      }
 
       const docRes = await new sql.Request(tx)
-        .input("company_id", args.companyId)
-        .input("sale_id", args.saleId)
+        .input("company_id", companyId)
+        .input("sale_id", saleId)
         .input("type", type)
         .query(`
-          INSERT INTO fiscal_documents (company_id, sale_id, type)
+          INSERT INTO dbo.fiscal_documents (company_id, sale_id, [type])
           OUTPUT INSERTED.*
           VALUES (@company_id, @sale_id, @type)
         `);
@@ -88,24 +192,25 @@ export async function issueFiscalTx(args: {
           .input("unit_price", it.unit_price)
           .input("total", it.total)
           .query(`
-            INSERT INTO fiscal_document_items
-            (document_id, sale_item_id, description, quantity, unit_price, total)
+            INSERT INTO dbo.fiscal_document_items
+              (document_id, sale_item_id, description, quantity, unit_price, total)
             VALUES
-            (@document_id, @sale_item_id, @description, @quantity, @unit_price, @total)
+              (@document_id, @sale_item_id, @description, @quantity, @unit_price, @total)
           `);
       }
 
       createdDocs.push(doc);
     }
 
-    if (args.type === "NFE" || args.type === "BOTH")
+    if (docType === "NFE" || docType === "BOTH") {
       await createDocument("NFE", products);
+    }
 
-    if (args.type === "NFSE" || args.type === "BOTH")
+    if (docType === "NFSE" || docType === "BOTH") {
       await createDocument("NFSE", services);
+    }
 
     await tx.commit();
-
     return createdDocs;
   } catch (e) {
     await tx.rollback();

@@ -31,7 +31,7 @@ export const CfopImportSchema = z.object({
     z.object({
       code: z.string().trim().length(4),
       description: z.string().trim().min(3).max(500),
-      nature: z.union([z.number().int().min(0).max(255), z.null(), z.undefined()]).transform((v) => (v === undefined ? null : v)),
+      nature: z.union([z.coerce.number().int().min(0).max(255), z.null(), z.undefined()]).transform((v) => (v === undefined ? null : v)),
       active: z.union([z.boolean(), z.null(), z.undefined()]).transform((v) => (v === undefined ? true : v ?? true)),
     })
   ),

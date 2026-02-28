@@ -2,6 +2,31 @@
 import sql from "mssql";
 import { getPool } from "../../../config/db";
 
+// 1) checa se já existe snapshot
+export async function hasFiscalSnapshotTx(
+  tx: sql.Transaction,
+  companyId: number,
+  sourceType: "sale" | "order",
+  sourceId: number,
+  engineVersion: string
+) {
+  const { recordset } = await new sql.Request(tx)
+    .input("company_id", sql.Int, companyId)
+    .input("source_type", sql.NVarChar(20), sourceType)
+    .input("source_id", sql.Int, sourceId)
+    .input("engine_version", sql.NVarChar(20), engineVersion)
+    .query(`
+      SELECT TOP 1 id
+      FROM dbo.fiscal_calculations
+      WHERE company_id=@company_id
+        AND source_type=@source_type
+        AND source_id=@source_id
+        AND engine_version=@engine_version
+    `);
+
+  return Boolean(recordset[0]);
+}
+
 export async function getCompanyUF(companyId: number, tx?: sql.Transaction) {
   const pool = tx ? null : await getPool();
   const req = tx ? new sql.Request(tx) : (pool as sql.ConnectionPool).request();
