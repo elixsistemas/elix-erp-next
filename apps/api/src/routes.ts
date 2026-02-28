@@ -21,6 +21,7 @@ import { rolesRoutes } from "./modules/roles/roles.routes";
 import { usersRoutes } from "./modules/users/users.routes";
 import { companyModulesRoutes } from "./modules/company_modules/company_modules.routes";
 
+
 export async function routes(app: FastifyInstance) {
   await app.register(authRoutes);
   await app.register(companiesRoutes);

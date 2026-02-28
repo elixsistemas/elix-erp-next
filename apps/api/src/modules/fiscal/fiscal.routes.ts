@@ -1,17 +1,45 @@
 import type { FastifyInstance } from "fastify";
-import * as controller from "./fiscal.controller";
 import { requireAuth, requirePermission } from "../../config/prehandlers";
+import * as controller from "./fiscal.controller";
+
+type IdParams = { id: string };
 
 export async function fiscalRoutes(app: FastifyInstance) {
-  app.post<{ Params: { id: number } }>(
-    "/fiscal/:id/emit",
-    { preHandler: [requireAuth, requirePermission("nfe.read")] },
-    controller.emit
+  // CFOP
+  app.get("/fiscal/cfop", { preHandler: [requireAuth, requirePermission("fiscal_cfop.read")] }, controller.listCfop);
+
+  app.post("/fiscal/cfop", { preHandler: [requireAuth, requirePermission("fiscal_cfop.create")] }, controller.createCfop);
+
+  app.patch<{ Params: IdParams }>(
+    "/fiscal/cfop/:id",
+    { preHandler: [requireAuth, requirePermission("fiscal_cfop.update")] },
+    controller.updateCfop
   );
 
-  app.post<{ Params: { id: number } }>(
-    "/fiscal/:id/cancel",
-    { preHandler: [requireAuth, requirePermission("nfe.read")] },
-    controller.cancel
+  app.patch<{ Params: IdParams }>(
+    "/fiscal/cfop/:id/toggle",
+    { preHandler: [requireAuth, requirePermission("fiscal_cfop.toggle")] },
+    controller.toggleCfop
   );
+
+  app.post("/fiscal/cfop/import", { preHandler: [requireAuth, requirePermission("fiscal_import.run")] }, controller.importCfop);
+
+  // NCM
+  app.get("/fiscal/ncm", { preHandler: [requireAuth, requirePermission("fiscal_ncm.read")] }, controller.listNcm);
+
+  app.post("/fiscal/ncm", { preHandler: [requireAuth, requirePermission("fiscal_ncm.create")] }, controller.createNcm);
+
+  app.patch<{ Params: IdParams }>(
+    "/fiscal/ncm/:id",
+    { preHandler: [requireAuth, requirePermission("fiscal_ncm.update")] },
+    controller.updateNcm
+  );
+
+  app.patch<{ Params: IdParams }>(
+    "/fiscal/ncm/:id/toggle",
+    { preHandler: [requireAuth, requirePermission("fiscal_ncm.toggle")] },
+    controller.toggleNcm
+  );
+
+  app.post("/fiscal/ncm/import", { preHandler: [requireAuth, requirePermission("fiscal_import.run")] }, controller.importNcm);
 }

@@ -1,6 +1,67 @@
 import sql from "mssql";
 import { getPool } from "../../config/db";
 import type { SaleCreate, SaleListQuery, SaleUpdate } from "./sales.schema";
+import { runFiscalEngineV01 } from "../fiscal/engine/fiscal-engine.service";
+import {
+  getCompanyUF,
+  getCustomerDestUF,
+  getActiveCompanyTaxProfile,
+  upsertFiscalCalculation,
+} from "../fiscal/engine/fiscal-engine.repository";
+
+export type SaleItemFiscalRow = {
+  id: number;
+  productId: number | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  ncmId: number | null;
+  cest: string | null;
+  fiscalJson: string | null;
+};
+
+export async function getSaleItemsForFiscalTx(
+  tx: sql.Transaction,
+  companyId: number,
+  saleId: number
+): Promise<SaleItemFiscalRow[]> {
+  const { recordset } = await new sql.Request(tx)
+    .input("company_id", sql.Int, companyId)
+    .input("sale_id", sql.Int, saleId)
+    .query(`
+      SELECT
+        si.id,
+        si.product_id,
+        si.description,
+        si.quantity,
+        si.unit_price,
+        si.total,
+        p.ncm_id,
+        p.cest,
+        p.fiscal_json
+      FROM dbo.sale_items si
+      JOIN dbo.sales s
+        ON s.id = si.sale_id
+       AND s.company_id = @company_id
+      LEFT JOIN dbo.products p
+        ON p.id = si.product_id
+       AND p.company_id = s.company_id
+      WHERE si.sale_id = @sale_id
+    `);
+
+  return recordset.map((r: any) => ({
+    id: Number(r.id),
+    productId: r.product_id ?? null,
+    description: r.description,
+    quantity: Number(r.quantity),
+    unitPrice: Number(r.unit_price),
+    total: Number(r.total),
+    ncmId: r.ncm_id ?? null,
+    cest: r.cest ?? null,
+    fiscalJson: r.fiscal_json ?? null,
+  }));
+}
 
 const toCents   = (v: number) => Math.round(v * 10000);
 const fromCents = (v: number) => v / 10000;
@@ -389,4 +450,86 @@ export async function setSaleStatus(
         updated_at = SYSUTCDATETIME()
       WHERE company_id = @company_id AND id = @sale_id
     `);
+}
+
+export async function completeSaleTx(companyId: number, saleId: number) {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+
+  try {
+    // Pega sale dentro da TX
+    const { recordset: sr } = await new sql.Request(tx)
+      .input("company_id", sql.Int, companyId)
+      .input("sale_id", sql.Int, saleId)
+      .query(`
+        SELECT TOP 1 *
+        FROM dbo.sales
+        WHERE company_id = @company_id AND id = @sale_id
+      `);
+
+    const s = sr[0];
+    if (!s) { await tx.rollback(); return false; }
+    if (s.status !== "draft") { await tx.rollback(); return false; }
+
+    // Contexto fiscal
+    const originUF = await getCompanyUF(companyId, tx);
+    const destUF = await getCustomerDestUF(companyId, Number(s.customer_id), tx);
+    const taxProfile = await getActiveCompanyTaxProfile(companyId, tx);
+
+    // Itens com NCM
+    const items = await getSaleItemsForFiscalTx(tx, companyId, saleId);
+
+    const ctx = {
+      companyId,
+      sourceType: "sale" as const,
+      sourceId: saleId,
+      issuedAt: new Date().toISOString(),
+      originUF,
+      destUF,
+      crt: taxProfile?.crt ?? null,
+      icmsContributor: taxProfile?.icmsContributor ?? null,
+    };
+
+    const engineItems = items.map((it) => ({
+      lineId: it.id,
+      productId: it.productId,
+      description: it.description,
+      ncmId: it.ncmId,
+      cest: it.cest,
+      qty: it.quantity,
+      unitPrice: it.unitPrice,
+      total: it.total,
+    }));
+
+    const result = runFiscalEngineV01(ctx, engineItems);
+
+    await upsertFiscalCalculation(
+      companyId,
+      "sale",
+      saleId,
+      result.engineVersion,
+      JSON.stringify(ctx),
+      JSON.stringify(result),
+      tx
+    );
+
+    // Completa a sale na mesma TX
+    await new sql.Request(tx)
+      .input("company_id", sql.Int, companyId)
+      .input("sale_id", sql.Int, saleId)
+      .query(`
+        UPDATE dbo.sales SET
+          status = 'completed',
+          completed_at = SYSUTCDATETIME(),
+          updated_at = SYSUTCDATETIME()
+        WHERE company_id = @company_id AND id = @sale_id
+      `);
+
+    await tx.commit();
+    return true;
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
 }

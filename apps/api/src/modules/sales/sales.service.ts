@@ -110,7 +110,8 @@ export async function complete(companyId: number, id: number) {
   const sale = await repo.getSale(companyId, id);
   if (!sale) return err<SaleServiceError>("SALE_NOT_FOUND");
   if (sale.status !== "draft") return err<SaleServiceError>("INVALID_STATUS");
-  await repo.setSaleStatus(companyId, id, "completed");
+  const done = await repo.completeSaleTx(companyId, id);
+  if (!done) return err<SaleServiceError>("SALE_NOT_FOUND"); // ou erro mais específico
   return ok({ id, status: "completed" });
 }
 

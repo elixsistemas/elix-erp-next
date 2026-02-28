@@ -1,6 +1,63 @@
 import sql from "mssql";
 import { getPool } from "../../config/db";
 import type { OrderCreate, OrderListQuery, OrderUpdate } from "./orders.schema";
+import { runFiscalEngineV01 } from "../fiscal/engine/fiscal-engine.service";
+import {
+  getCompanyUF,
+  getCustomerDestUF,
+  getActiveCompanyTaxProfile,
+  upsertFiscalCalculation,
+} from "../fiscal/engine/fiscal-engine.repository";
+
+export type OrderItemFiscalRow = {
+  id: number;
+  productId: number | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+  ncmId: number | null;
+  cest: string | null;
+  fiscalJson: string | null;
+};
+
+export async function getOrderItemsForFiscalTx(
+  tx: sql.Transaction,
+  companyId: number,
+  orderId: number
+): Promise<OrderItemFiscalRow[]> {
+  const { recordset } = await new sql.Request(tx)
+    .input("company_id", sql.Int, companyId)
+    .input("order_id", sql.Int, orderId)
+    .query(`
+      SELECT
+        oi.id,
+        oi.product_id,
+        oi.description,
+        oi.quantity,
+        oi.unit_price,
+        oi.total,
+        p.ncm_id,
+        p.cest,
+        p.fiscal_json
+      FROM dbo.order_items oi
+      JOIN dbo.orders o ON o.id = oi.order_id AND o.company_id = @company_id
+      LEFT JOIN dbo.products p ON p.id = oi.product_id AND p.company_id = o.company_id
+      WHERE oi.order_id = @order_id
+    `);
+
+  return recordset.map((r: any) => ({
+    id: Number(r.id),
+    productId: r.product_id ?? null,
+    description: r.description,
+    quantity: Number(r.quantity),
+    unitPrice: Number(r.unit_price),
+    total: Number(r.total),
+    ncmId: r.ncm_id ?? null,
+    cest: r.cest ?? null,
+    fiscalJson: r.fiscal_json ?? null,
+  }));
+}
 
 // ── helpers de cálculo ───────────────────────────────────────
 const toCents   = (v: number) => Math.round(v * 10000);
@@ -390,4 +447,88 @@ export async function setOrderStatus(
         updated_at = SYSUTCDATETIME()
       WHERE company_id = @company_id AND id = @order_id
     `);
+}
+
+// Confirma pedido + salva snapshot fiscal na mesma TX (rollback garantido)
+export async function confirmOrderTx(companyId: number, orderId: number) {
+  const pool = await getPool();
+  const tx = new sql.Transaction(pool);
+  await tx.begin();
+
+  try {
+    // lock lógico: pega o pedido dentro da tx
+    const { recordset: or } = await new sql.Request(tx)
+      .input("company_id", sql.Int, companyId)
+      .input("order_id", sql.Int, orderId)
+      .query(`
+        SELECT TOP 1 *
+        FROM dbo.orders
+        WHERE company_id = @company_id AND id = @order_id
+      `);
+
+    const o = or[0];
+    if (!o) { await tx.rollback(); return false; }
+    if (o.status !== "draft") { await tx.rollback(); return false; }
+
+    const originUF = await getCompanyUF(companyId, tx);
+    const destUF =
+      (o.delivery_state && String(o.delivery_state).trim()) ||
+      (await getCustomerDestUF(companyId, Number(o.customer_id), tx));
+
+    const taxProfile = await getActiveCompanyTaxProfile(companyId, tx);
+
+    const items = await getOrderItemsForFiscalTx(tx, companyId, orderId);
+
+    const ctx = {
+      companyId,
+      sourceType: "order" as const,
+      sourceId: orderId,
+      issuedAt: new Date().toISOString(),
+      originUF,
+      destUF: destUF ?? null,
+      crt: taxProfile?.crt ?? null,
+      icmsContributor: taxProfile?.icmsContributor ?? null,
+    };
+
+    const engineItems = items.map((it) => ({
+      lineId: it.id,
+      productId: it.productId,
+      description: it.description,
+      ncmId: it.ncmId,
+      cest: it.cest,
+      qty: it.quantity,
+      unitPrice: it.unitPrice,
+      total: it.total,
+    }));
+
+    const result = runFiscalEngineV01(ctx, engineItems);
+
+    await upsertFiscalCalculation(
+      companyId,
+      "order",
+      orderId,
+      result.engineVersion,
+      JSON.stringify(ctx),
+      JSON.stringify(result),
+      tx
+    );
+
+    // agora confirma (mesma TX)
+    await new sql.Request(tx)
+      .input("company_id", sql.Int, companyId)
+      .input("order_id", sql.Int, orderId)
+      .query(`
+        UPDATE dbo.orders SET
+          status = 'confirmed',
+          confirmed_at = SYSUTCDATETIME(),
+          updated_at = SYSUTCDATETIME()
+        WHERE company_id = @company_id AND id = @order_id
+      `);
+
+    await tx.commit();
+    return true;
+  } catch (e) {
+    await tx.rollback();
+    throw e;
+  }
 }
