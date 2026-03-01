@@ -40,7 +40,7 @@ export const CfopImportSchema = z.object({
 /** NCM */
 export const NcmUpsertSchema = z.object({
   code: z.string().trim().length(8),
-  description: z.string().trim().min(3).max(600),
+  description: z.string().trim().min(3).max(2000),
   ex: asNullableString,
   start_date: asNullableString, // ✅ normaliza p/ string|null
   end_date: asNullableString,
@@ -59,7 +59,7 @@ export const NcmImportSchema = z.object({
   items: z.array(
     z.object({
       code: z.string().trim().length(8),
-      description: z.string().trim().min(3).max(600),
+      description: z.string().trim().min(3).max(2000),
       ex: asNullableString,
       start_date: asNullableString,
       end_date: asNullableString,

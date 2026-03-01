@@ -19,7 +19,7 @@ await app.register(cors, {
 });
 
 await app.register(multipart, {
-  limits: { fileSize: 400_000, files: 1 },
+  limits: { fileSize: 50 * 1024 * 1024, files: 1 }, // 50MB
 });
 
 // ✅ Plugin agora é passivo (não bloqueia)

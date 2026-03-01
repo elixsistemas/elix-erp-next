@@ -22,7 +22,7 @@ export async function fiscalRoutes(app: FastifyInstance) {
     controller.toggleCfop
   );
 
-  app.post("/fiscal/cfop/import", { preHandler: [requireAuth, requirePermission("fiscal_import.run")] }, controller.importCfop);
+  app.post("/fiscal/cfop/import", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importCfop);
 
   // NCM
   app.get("/fiscal/ncm", { preHandler: [requireAuth, requirePermission("fiscal_ncm.read")] }, controller.listNcm);
@@ -41,5 +41,32 @@ export async function fiscalRoutes(app: FastifyInstance) {
     controller.toggleNcm
   );
 
-  app.post("/fiscal/ncm/import", { preHandler: [requireAuth, requirePermission("fiscal_import.run")] }, controller.importNcm);
+  app.post("/fiscal/ncm/import", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importNcm);
+
+  app.post(
+    "/fiscal/issue",
+    { preHandler: [requireAuth, requirePermission("fiscal_issue.create")] },
+    controller.issueBySale
+  );
+
+  app.get(
+    "/fiscal/by-sale",
+    { preHandler: [requireAuth, requirePermission("fiscal_documents.read")] },
+    controller.listDocsBySale
+  );
+
+  // CFOP upload
+  app.post(
+    "/fiscal/cfop/import-file",
+    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
+    controller.importCfopFile
+  );
+
+  // NCM upload
+  app.post(
+    "/fiscal/ncm/import-file",
+    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
+    controller.importNcmFile
+  );
+
 }

@@ -1,10 +1,72 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
+import * as salesFiscalRepo from "../sales/sales.fiscal.repository";
 import * as service from "./fiscal.service";
 import {
   CfopImportSchema, CfopListQuerySchema, CfopUpsertSchema,
   NcmImportSchema, NcmListQuerySchema, NcmUpsertSchema,
 } from "./fiscal.schema";
+import { parseNcmUploadToItems, parseCfopUploadToItems } from "./fiscal.import-file";
+
+const DryRunQuerySchema = z.object({
+  dryRun: z.coerce.number().int().optional(), // 1/0
+});
+
+function getDryRun(req: FastifyRequest) {
+  const q = DryRunQuerySchema.parse(req.query);
+  return q.dryRun === 1;
+}
+
+export async function importNcmFile(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const dryRun = getDryRun(req);
+
+    const file = await (req as any).file();
+    if (!file) return rep.code(400).send({ message: "Arquivo não enviado" });
+
+    const buf = await file.toBuffer();
+    const filename = String(file.filename ?? "ncm");
+
+    const items = await parseNcmUploadToItems(buf, filename);
+
+    // ✅ valida ANTES de importar
+    const parsed = NcmImportSchema.parse({ dryRun, items });
+
+    const out = await service.importNcm(parsed.items, parsed.dryRun);
+
+    return rep.send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+export async function importCfopFile(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const dryRun = getDryRun(req);
+
+    const file = await (req as any).file();
+    if (!file) return rep.code(400).send({ message: "Arquivo não enviado" });
+
+    const buf = await file.toBuffer();
+    const filename = String(file.filename ?? "cfop");
+
+    const items = await parseCfopUploadToItems(buf, filename); // <- tem que gerar CfopCreate[]
+    const out = await service.importCfop(items, dryRun);
+
+    return rep.send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+const IssueFiscalSchema = z.object({
+  saleId: z.coerce.number().int().positive(),
+  type: z.enum(["NFE", "NFSE", "BOTH"]),
+});
+
+export const ListFiscalBySaleSchema = z.object({
+  saleId: z.coerce.number().int().positive(),
+});
 
 type IdParams = { id: string };
 
@@ -126,6 +188,71 @@ export async function importNcm(req: FastifyRequest, rep: FastifyReply) {
     const payload = NcmImportSchema.parse(req.body);
     const out = await service.importNcm(payload.items, payload.dryRun);
     return rep.send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+export async function issueBySale(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const companyId = req.auth!.companyId;
+    const payload = IssueFiscalSchema.parse(req.body);
+
+    const docs = await salesFiscalRepo.issueFiscalTx({
+      companyId,
+      saleId: payload.saleId,
+      type: payload.type,
+    });
+
+    return rep.code(201).send({ documents: docs });
+  } catch (err: any) {
+    // mantém seu padrão de Zod
+    if (err instanceof ZodError) return zodFail(rep, err);
+
+    // erros de domínio do fiscal
+    const code = String(err?.code ?? err?.message ?? "");
+
+    if (code === "FISCAL_ALREADY_EXISTS") {
+      return rep.code(409).send({
+        code: "FISCAL_ALREADY_EXISTS",
+        message: "Já existe um documento fiscal ativo para esta venda.",
+        docType: err?.docType ?? null,
+      });
+    }
+
+    if (code === "FISCAL_PREFLIGHT_FAILED") {
+      return rep.code(400).send({
+        code: "FISCAL_PREFLIGHT_FAILED",
+        message: "A emissão foi bloqueada por validações fiscais.",
+        alerts: err?.alerts ?? [],
+      });
+    }
+
+    if (String(err?.message ?? "") === "SALE_NOT_FOUND") {
+      return rep.code(404).send({ code: "SALE_NOT_FOUND", message: "Venda não encontrada." });
+    }
+
+    // fallback
+    req.log?.error?.(err);
+    return rep.code(500).send({ code: "INTERNAL_ERROR", message: "Erro interno ao emitir fiscal." });
+  }
+}
+
+export async function listDocsBySale(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const companyId = req.auth!.companyId;
+    const q = ListFiscalBySaleSchema.parse(req.query);
+
+    const data = await salesFiscalRepo.listFiscalBySale({
+      companyId,
+      saleId: q.saleId,
+    });
+
+    if (!data) {
+      return rep.code(404).send({ code: "SALE_NOT_FOUND", message: "Venda não encontrada." });
+    }
+
+    return rep.send(data);
   } catch (err) {
     return zodFail(rep, err);
   }

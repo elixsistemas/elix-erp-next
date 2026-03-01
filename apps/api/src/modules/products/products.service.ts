@@ -20,11 +20,16 @@ export async function create(companyId: number, data: ProductCreate) {
 }
 
 export async function update(companyId: number, id: number, data: ProductUpdate) {
-  // ✅ regra: se virar service, força track_inventory=0
   const payload: ProductUpdate = {
     ...data,
     track_inventory: data.kind === "service" ? false : data.track_inventory,
   };
+
+  // 🔒 se virar service, remove NCM explicitamente
+  if (data.kind === "service") {
+    (payload as any).ncmId = null;
+    (payload as any).ncm = null;
+  }
 
   return repo.updateProduct(companyId, id, payload);
 }

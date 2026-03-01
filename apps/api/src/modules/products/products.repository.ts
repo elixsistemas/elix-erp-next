@@ -200,6 +200,8 @@ export async function updateProduct(
       ncmCode = (ncmRes.recordset[0]?.code as string) ?? null;
     }
 
+    const hasNcmId = Object.prototype.hasOwnProperty.call(data, "ncmId");
+
     const r = await pool.request()
       .input("company_id", sql.Int, companyId)
       .input("id", sql.Int, id)
@@ -236,7 +238,11 @@ export async function updateProduct(
           sku = COALESCE(@sku, sku),
 
           -- se veio ncmId, atualiza ncm_id; senão preserva
-          ncm_id = COALESCE(@ncm_id, ncm_id),
+          ncm_id =
+            CASE
+              WHEN @has_ncm_id = 1 THEN @ncm_id
+              ELSE ncm_id
+            END,
 
           -- se veio ncmId ou ncm texto, atualiza ncm; senão preserva
           ncm = COALESCE(@ncm, ncm),

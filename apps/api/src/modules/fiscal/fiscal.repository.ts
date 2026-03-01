@@ -173,8 +173,12 @@ export async function upsertCfopMany(items: CfopCreate[], dryRun: boolean) {
           ON t.code = s.code;
       `);
 
-    const row = res.recordset?.[0] ?? { toInsert: 0, toUpdate: 0 };
-    return { inserted: Number(row.toInsert ?? 0), updated: Number(row.toUpdate ?? 0) };
+    const row = res.recordset?.[0] ?? { toInsert: 0, toUpdate: 0, itemsCount: 0 };
+    return { 
+      inserted: Number(row.toInsert ?? 0), 
+      updated: Number(row.toUpdate ?? 0), 
+      itemsCount: items.length,
+    };
   }
 
   // =========================
@@ -226,8 +230,12 @@ export async function upsertCfopMany(items: CfopCreate[], dryRun: boolean) {
       FROM @out;
     `);
 
-  const row = res.recordset?.[0] ?? { inserted: 0, updated: 0 };
-  return { inserted: Number(row.inserted ?? 0), updated: Number(row.updated ?? 0) };
+  const row = res.recordset?.[0] ?? { inserted: 0, updated: 0, itemsCount: 0 };
+  return { 
+    inserted: Number(row.inserted ?? 0), 
+    updated: Number(row.updated ?? 0), 
+    itemsCount: items.length,
+  };
 }
 
 /* =========================
@@ -378,8 +386,12 @@ export async function upsertNcmMany(items: NcmCreate[], dryRun: boolean) {
          AND t.ex_key = s.ex_key;
       `);
 
-    const row = res.recordset?.[0] ?? { toInsert: 0, toUpdate: 0 };
-    return { inserted: Number(row.toInsert ?? 0), updated: Number(row.toUpdate ?? 0) };
+    const row = res.recordset?.[0] ?? { toInsert: 0, toUpdate: 0, itemsCount: 0 };
+    return { 
+      inserted: Number(row.toInsert ?? 0), 
+      updated: Number(row.toUpdate ?? 0), 
+      itemsCount: items.length,
+    };
   }
 
   // =========================
@@ -442,6 +454,10 @@ export async function upsertNcmMany(items: NcmCreate[], dryRun: boolean) {
       FROM @out;
     `);
 
-  const row = res.recordset?.[0] ?? { inserted: 0, updated: 0 };
-  return { inserted: Number(row.inserted ?? 0), updated: Number(row.updated ?? 0) };
+  const row = res.recordset?.[0] ?? { inserted: 0, updated: 0, itemsCount: 0  };
+  return { 
+    inserted: Number(row.inserted ?? 0), 
+    updated: Number(row.updated ?? 0),
+    itemsCount: items.length,
+  };
 }
