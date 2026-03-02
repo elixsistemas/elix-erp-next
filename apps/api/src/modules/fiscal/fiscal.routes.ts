@@ -69,4 +69,42 @@ export async function fiscalRoutes(app: FastifyInstance) {
     controller.importNcmFile
   );
 
+    // CEST
+  app.get(
+    "/fiscal/cest",
+    { preHandler: [requireAuth, requirePermission("fiscal_cest.read")] },
+    controller.listCest
+  );
+
+  app.post(
+    "/fiscal/cest",
+    { preHandler: [requireAuth, requirePermission("fiscal_cest.create")] },
+    controller.createCest
+  );
+
+  app.patch<{ Params: IdParams }>(
+    "/fiscal/cest/:id",
+    { preHandler: [requireAuth, requirePermission("fiscal_cest.update")] },
+    controller.updateCest
+  );
+
+  app.patch<{ Params: IdParams }>(
+    "/fiscal/cest/:id/toggle",
+    { preHandler: [requireAuth, requirePermission("fiscal_cest.toggle")] },
+    controller.toggleCest
+  );
+
+  app.post(
+    "/fiscal/cest/import",
+    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
+    controller.importCest
+  );
+
+  // CEST upload
+  app.post(
+    "/fiscal/cest/import-file",
+    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
+    controller.importCestFile
+  );
+
 }

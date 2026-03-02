@@ -461,3 +461,211 @@ export async function upsertNcmMany(items: NcmCreate[], dryRun: boolean) {
     itemsCount: items.length,
   };
 }
+
+/* =========================
+   CEST
+========================= */
+
+export type CestCreate = {
+  code: string; // char(7)
+  description: string; // nvarchar(1200)
+  segment: string | null; // nvarchar(400)
+  active: boolean;
+};
+
+export type CestUpdate = Partial<CestCreate>;
+
+export async function listCest(q: ListQuery) {
+  const pool = await getPool();
+  const { page, pageSize, offset, active, search } = parsePaging(q);
+
+  const res = await pool.request()
+    .input("offset", offset)
+    .input("pageSize", pageSize)
+    .input("active", active)
+    .input("search", `%${search}%`)
+    .query(`
+      ;WITH base AS (
+        SELECT
+          id, code, description, segment, active, created_at, updated_at
+        FROM dbo.fiscal_cest
+        WHERE (@active IS NULL OR active = @active)
+          AND (
+            @search = '%%'
+            OR code LIKE @search
+            OR description LIKE @search
+            OR segment LIKE @search
+          )
+      )
+      SELECT
+        (SELECT COUNT(1) FROM base) AS total,
+        (SELECT
+           id, code, description, segment, active, created_at, updated_at
+         FROM base
+         ORDER BY code
+         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+         FOR JSON PATH) AS itemsJson;
+    `);
+
+  const row = res.recordset?.[0] ?? { total: 0, itemsJson: "[]" };
+  const items = JSON.parse(row.itemsJson ?? "[]");
+  return { page, pageSize, total: Number(row.total ?? 0), items };
+}
+
+export async function createCest(data: CestCreate) {
+  const pool = await getPool();
+  const res = await pool.request()
+    .input("code", data.code)
+    .input("description", data.description)
+    .input("segment", data.segment)
+    .input("active", data.active ? 1 : 0)
+    .query(`
+      INSERT INTO dbo.fiscal_cest (code, description, segment, active)
+      OUTPUT INSERTED.*
+      VALUES (@code, @description, @segment, @active);
+    `);
+  return res.recordset?.[0] ?? null;
+}
+
+export async function updateCest(id: number, patch: CestUpdate) {
+  const pool = await getPool();
+  const res = await pool.request()
+    .input("id", id)
+    .input("code", patch.code ?? null)
+    .input("description", patch.description ?? null)
+    .input("segment", patch.segment ?? null)
+    .input("active", patch.active === undefined ? null : (patch.active ? 1 : 0))
+    .query(`
+      UPDATE dbo.fiscal_cest
+      SET
+        code        = COALESCE(@code, code),
+        description = COALESCE(@description, description),
+        segment     = COALESCE(@segment, segment),
+        active      = COALESCE(@active, active),
+        updated_at  = sysutcdatetime()
+      OUTPUT INSERTED.*
+      WHERE id = @id;
+    `);
+  return res.recordset?.[0] ?? null;
+}
+
+export async function toggleCest(id: number) {
+  const pool = await getPool();
+  const res = await pool.request()
+    .input("id", id)
+    .query(`
+      UPDATE dbo.fiscal_cest
+      SET active = IIF(active = 1, 0, 1),
+          updated_at = sysutcdatetime()
+      OUTPUT INSERTED.*
+      WHERE id = @id;
+    `);
+  return res.recordset?.[0] ?? null;
+}
+
+export async function upsertCestMany(items: CestCreate[], dryRun: boolean) {
+  const pool = await getPool();
+  if (!items.length) return { inserted: 0, updated: 0, itemsCount: 0 };
+
+  const json = JSON.stringify(items);
+
+  // =========================
+  // DRY RUN
+  // =========================
+  if (dryRun) {
+    const res = await pool.request()
+      .input("json", json)
+      .query(`
+        DECLARE @src TABLE (
+          code char(7) NOT NULL,
+          description nvarchar(1200) NOT NULL,
+          segment nvarchar(400) NULL,
+          active bit NOT NULL
+        );
+
+        ;INSERT INTO @src(code, description, segment, active)
+        SELECT
+          code,
+          description,
+          NULLIF(LTRIM(RTRIM(segment)), ''),
+          active
+        FROM OPENJSON(@json)
+        WITH (
+          code char(7) '$.code',
+          description nvarchar(1200) '$.description',
+          segment nvarchar(400) '$.segment',
+          active bit '$.active'
+        );
+
+        SELECT
+          SUM(CASE WHEN t.id IS NULL THEN 1 ELSE 0 END) AS toInsert,
+          SUM(CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END) AS toUpdate
+        FROM @src s
+        LEFT JOIN dbo.fiscal_cest t
+          ON t.code = s.code;
+      `);
+
+    const row = res.recordset?.[0] ?? { toInsert: 0, toUpdate: 0 };
+    return {
+      inserted: Number(row.toInsert ?? 0),
+      updated: Number(row.toUpdate ?? 0),
+      itemsCount: items.length,
+    };
+  }
+
+  // =========================
+  // REAL UPSERT
+  // =========================
+  const res = await pool.request()
+    .input("json", json)
+    .query(`
+      DECLARE @src TABLE (
+        code char(7) NOT NULL,
+        description nvarchar(1200) NOT NULL,
+        segment nvarchar(400) NULL,
+        active bit NOT NULL
+      );
+
+      ;INSERT INTO @src(code, description, segment, active)
+      SELECT
+        code,
+        description,
+        NULLIF(LTRIM(RTRIM(segment)), ''),
+        active
+      FROM OPENJSON(@json)
+      WITH (
+        code char(7) '$.code',
+        description nvarchar(1200) '$.description',
+        segment nvarchar(400) '$.segment',
+        active bit '$.active'
+      );
+
+      DECLARE @out TABLE(action nvarchar(10));
+
+      MERGE dbo.fiscal_cest AS tgt
+      USING @src AS src
+        ON tgt.code = src.code
+      WHEN MATCHED THEN
+        UPDATE SET
+          description = src.description,
+          segment = src.segment,
+          active = src.active,
+          updated_at = sysutcdatetime()
+      WHEN NOT MATCHED THEN
+        INSERT (code, description, segment, active, created_at, updated_at)
+        VALUES (src.code, src.description, src.segment, src.active, sysutcdatetime(), sysutcdatetime())
+      OUTPUT $action INTO @out(action);
+
+      SELECT
+        SUM(CASE WHEN action = 'INSERT' THEN 1 ELSE 0 END) AS inserted,
+        SUM(CASE WHEN action = 'UPDATE' THEN 1 ELSE 0 END) AS updated
+      FROM @out;
+    `);
+
+  const row = res.recordset?.[0] ?? { inserted: 0, updated: 0 };
+  return {
+    inserted: Number(row.inserted ?? 0),
+    updated: Number(row.updated ?? 0),
+    itemsCount: items.length,
+  };
+}

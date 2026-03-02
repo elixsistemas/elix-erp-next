@@ -5,8 +5,10 @@ import * as service from "./fiscal.service";
 import {
   CfopImportSchema, CfopListQuerySchema, CfopUpsertSchema,
   NcmImportSchema, NcmListQuerySchema, NcmUpsertSchema,
+  CestImportSchema, CestListQuerySchema, CestUpsertSchema,
 } from "./fiscal.schema";
-import { parseNcmUploadToItems, parseCfopUploadToItems } from "./fiscal.import-file";
+
+import { parseNcmUploadToItems, parseCfopUploadToItems, parseCestUploadToItems } from "./fiscal.import-file";
 
 const DryRunQuerySchema = z.object({
   dryRun: z.coerce.number().int().optional(), // 1/0
@@ -193,6 +195,29 @@ export async function importNcm(req: FastifyRequest, rep: FastifyReply) {
   }
 }
 
+export async function importCestFile(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const dryRun = getDryRun(req);
+
+    const file = await (req as any).file();
+    if (!file) return rep.code(400).send({ message: "Arquivo não enviado" });
+
+    const buf = await file.toBuffer();
+    const filename = String(file.filename ?? "cest");
+
+    const items = await parseCestUploadToItems(buf, filename);
+
+    // ✅ valida ANTES de importar (mesmo padrão do NCM)
+    const parsed = CestImportSchema.parse({ dryRun, items });
+
+    const out = await service.importCest(parsed.items, parsed.dryRun);
+
+    return rep.send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
 export async function issueBySale(req: FastifyRequest, rep: FastifyReply) {
   try {
     const companyId = req.auth!.companyId;
@@ -253,6 +278,58 @@ export async function listDocsBySale(req: FastifyRequest, rep: FastifyReply) {
     }
 
     return rep.send(data);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+// CEST
+export async function listCest(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CestListQuerySchema.parse(req.query);
+    const out = await service.listCest(q);
+    return rep.send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+export async function createCest(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const body = CestUpsertSchema.parse(req.body);
+    const out = await service.createCest(body);
+    return rep.code(201).send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+export async function updateCest(req: FastifyRequest<{ Params: IdParams }>, rep: FastifyReply) {
+  try {
+    const id = Number(req.params.id);
+    const body = CestUpsertSchema.partial().parse(req.body);
+    const out = await service.updateCest(id, body);
+    return rep.send(out);
+  } catch (err) {
+    return zodFail(rep, err);
+  }
+}
+
+export async function toggleCest(
+  req: FastifyRequest<{ Params: IdParams }>,
+  rep: FastifyReply
+) {
+  const id = parseIdOr400(rep, req.params.id);
+  if (!id) return;
+  const out = await service.toggleCest(id);
+  return rep.send(out);
+}
+
+export async function importCest(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const payload = CestImportSchema.parse(req.body);
+    const out = await service.importCest(payload.items, payload.dryRun);
+    return rep.send(out);
   } catch (err) {
     return zodFail(rep, err);
   }

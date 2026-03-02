@@ -66,7 +66,7 @@ export function requirePermission(code: string): preHandlerHookHandler {
     if (!req.auth) return rep.code(401).send({ message: "Unauthorized" });
 
     const ok = req.auth.perms.some((p) => p.trim().toLowerCase() === need);
-    if (!ok) return rep.code(403).send({ message: "Forbidden", missing: code });
+    if (!ok) return rep.code(403).send({ message: "Você não possui permissão para este acesso.", missing: code });
   };
 }
 

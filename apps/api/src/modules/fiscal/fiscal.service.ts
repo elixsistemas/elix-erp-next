@@ -1,4 +1,11 @@
-import type { CfopListQuery, CfopUpsert, NcmListQuery, NcmUpsert } from "./fiscal.schema";
+import type {
+  CfopListQuery,
+  CfopUpsert,
+  NcmListQuery,
+  NcmUpsert,
+  CestListQuery,
+  CestUpsert,
+} from "./fiscal.schema";
 import * as repo from "./fiscal.repository";
 
 export async function listCfop(q: CfopListQuery) {
@@ -33,4 +40,21 @@ export async function toggleCfop(id: number) {
 
 export async function toggleNcm(id: number) {
   return repo.toggleNcm(id);
+}
+
+export async function listCest(q: CestListQuery) {
+  return repo.listCest(q);
+}
+export async function createCest(data: CestUpsert) {
+  return repo.createCest(data);
+}
+export async function updateCest(id: number, patch: Partial<CestUpsert>) {
+  return repo.updateCest(id, patch);
+}
+export async function importCest(items: CestUpsert[], dryRun: boolean) {
+  return repo.upsertCestMany(items, dryRun);
+}
+
+export async function toggleCest(id: number) {
+  return repo.toggleCest(id);
 }
