@@ -14,6 +14,8 @@ type User = {
 type Company = {
   id: number;
   name: string;
+  logo_base64?: string | null;
+  logo_mime?: string | null;
 };
 
 type AuthContextType = {

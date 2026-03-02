@@ -28,6 +28,7 @@ export function ProductsTable({ rows, loading, onEdit, onRemove }: Props) {
             <TableHead style={{ width: 90 }}>ID</TableHead>
             <TableHead>Produto</TableHead>
             <TableHead style={{ width: 130 }}>Tipo</TableHead>
+            <TableHead style={{ width: 180 }}>NCM</TableHead>
             <TableHead style={{ width: 160 }}>Preço</TableHead>
             <TableHead style={{ width: 140 }}>Status</TableHead>
             <TableHead style={{ width: 180 }} className="text-right">
@@ -45,7 +46,7 @@ export function ProductsTable({ rows, loading, onEdit, onRemove }: Props) {
             </TableRow>
           ) : rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+              <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                 Nenhum produto encontrado.
               </TableCell>
             </TableRow>
@@ -56,6 +57,21 @@ export function ProductsTable({ rows, loading, onEdit, onRemove }: Props) {
               return (
                 <TableRow key={r.id}>
                   <TableCell>#{r.id}</TableCell>
+                  <TableCell>
+                    {r.ncm ? (
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm">{r.ncm}</span>
+
+                        {(r as any).ncm_id ? (
+                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Vinculado</Badge>
+                        ) : (
+                          <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">Manual</Badge>
+                        )}
+                      </div>
+                    ) : (
+                      <Badge variant="secondary">Não informado</Badge>
+                    )}
+                  </TableCell>
 
                   <TableCell>
                     <div className="font-medium">{r.name}</div>

@@ -24,6 +24,7 @@ import PedidoPrintPage from "@/pages/comercial/pedidos/PedidoPrintPage";
 import VendasListPage from "@/pages/comercial/vendas/VendasListPage";
 import VendaDetailsPage from "@/pages/comercial/vendas/VendaDetailsPage";
 import VendaPrintPage from "@/pages/comercial/vendas/VendaPrintPage";
+import FiscalPage from "@/pages/cadastros/fiscal/FiscalPage";
 
 import RolesPage from "@/pages/admin/RolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
@@ -56,6 +57,7 @@ function AppBoot() {
             <Route path="/cadastros/clientes" element={<CustomersPage />} />
             <Route path="/cadastros/produtos" element={<ProductsPage />} />
             <Route path="/cadastros/fornecedores" element={<SuppliersPage />} />
+            <Route path="/cadastros/fiscal" element={<FiscalPage />} />
 
             {/* Estoque */}
             <Route path="/inventory" element={<InventoryPage />} />

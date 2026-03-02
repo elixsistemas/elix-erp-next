@@ -142,6 +142,7 @@ function sanitizePayload(data: ProductUpsertForm) {
     uom: toNull(data.uom),
 
     ncm: toNull(data.ncm),
+    ncm_id: toNull(data.ncm_id),
     ean: toNull(data.ean),
     cest: toNull(data.cest),
     fiscal_json: toNull(data.fiscal_json),

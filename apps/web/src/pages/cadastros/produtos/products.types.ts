@@ -13,6 +13,7 @@ export type Product = {
   uom?: string | null;
 
   ncm?: string | null;
+  ncm_id?: number | null;
   ean?: string | null;
   cest?: string | null;
   fiscal_json?: string | null;
@@ -43,6 +44,7 @@ export type ProductCreate = {
   uom?: string | null;
 
   ncm?: string | null;
+  ncm_id?: number | null;
   ean?: string | null;
   cest?: string | null;
   fiscal_json?: string | null;

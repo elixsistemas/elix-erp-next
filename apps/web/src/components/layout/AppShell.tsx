@@ -24,7 +24,7 @@ export default function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const { logout, user, company } = useAuth();
-  const { brand, isLoading: brandingLoading } = useBranding();
+  const { isLoading: brandingLoading } = useBranding();
 
   const location = useLocation();
   const title = useMemo(() => pageTitleFromPath(location.pathname), [location.pathname]);
@@ -32,7 +32,17 @@ export default function AppShell() {
   // ✅ nome “real” da empresa logada vem do AuthContext
   const companyName = company?.name || "Empresa";
   // ✅ logo/estilo vem do Branding (se houver)
-  const logoUrl = brand?.logo_url || "/assets/elix-logo.png";
+  const logoUrl = useMemo(() => {
+    const raw = company?.logo_base64?.trim();
+
+    if (!raw) return "/company-placeholder.png";
+
+    // se já veio pronto como data URL, usa direto
+    if (raw.startsWith("data:")) return raw;
+
+    // se veio só o base64 puro
+    return `data:${company?.logo_mime || "image/png"};base64,${raw}`;
+  }, [company?.logo_base64, company?.logo_mime]);
 
   const userInitials = useMemo(() => {
     const name = user?.name?.trim();
@@ -56,54 +66,54 @@ export default function AppShell() {
       {/* Conteúdo */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header global */}
-        <header className="h-14 flex items-center justify-between px-4 border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
-          <div className="flex items-center gap-3">
+        <header className="h-16 flex items-center justify-between px-5 border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-md">
+          <div className="flex items-center gap-4">
             <button className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Abrir menu">
               <Menu size={22} />
             </button>
 
-            {/* Branding (logo) + Empresa (nome real) */}
-            <div className="flex items-center gap-2">
+            {/* Branding + Empresa */}
+            <div className="flex items-center gap-3">
               <div
-                className="h-9 w-9 rounded-xl overflow-hidden bg-slate-200 dark:bg-slate-800 flex items-center justify-center"
+                className="h-11 w-11 md:h-12 md:w-12 rounded-2xl overflow-hidden bg-slate-200 dark:bg-slate-800 flex items-center justify-center ring-1 ring-slate-200/60 dark:ring-slate-700/60"
                 title={companyName}
               >
-                {logoUrl ? (
-                  <img
-                    src={logoUrl}
-                    alt={companyName}
-                    className="h-9 w-9 object-contain"
-                    draggable={false}
-                  />
-                ) : (
-                  <span className="font-bold">{companyName?.[0] ?? "E"}</span>
-                )}
+                <img
+                  src={logoUrl}
+                  alt={companyName}
+                  className="h-full w-full object-contain p-1"
+                  draggable={false}
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = "/company-placeholder.png";
+                  }}
+                />
               </div>
 
               <div className="leading-tight">
-                <div className="font-semibold text-slate-800 dark:text-white">
+                <div className="font-semibold text-[15px] md:text-base text-slate-900 dark:text-white">
                   {company ? companyName : (brandingLoading ? "Carregando..." : "Empresa")}
                 </div>
-                <div className="text-xs text-slate-500 dark:text-slate-400">{title}</div>
+                <div className="text-[12px] md:text-sm text-slate-500 dark:text-slate-400">
+                  {title}
+                </div>
               </div>
             </div>
           </div>
 
           {/* User box */}
           <div className="flex items-center gap-3">
-            {/* ✅ botão trocar empresa */}
             <div className="hidden sm:block">
               <SwitchCompanyDialog />
             </div>
 
             <div className="hidden sm:flex items-center gap-2">
-              <Avatar className="h-8 w-8">
+              <Avatar className="h-9 w-9">
                 <AvatarImage src={(user as any)?.avatarUrl || ""} alt={user?.name || "Usuário"} />
                 <AvatarFallback>{userInitials}</AvatarFallback>
               </Avatar>
 
-              <div className="hidden md:block">
-                <div className="text-sm font-medium text-slate-800 dark:text-white">
+              <div className="hidden md:block leading-tight">
+                <div className="text-sm font-medium text-slate-900 dark:text-white">
                   {user?.name || "Administrador"}
                 </div>
                 <div className="text-xs text-slate-500 dark:text-slate-400">{user?.email || ""}</div>

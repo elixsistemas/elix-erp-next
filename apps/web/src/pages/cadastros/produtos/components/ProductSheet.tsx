@@ -1,6 +1,6 @@
 import * as React from "react";
 import { toast } from "sonner";
-
+import { useFiscalNcm } from "@/pages/cadastros/fiscal/useFiscalNcm";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -40,6 +40,7 @@ const empty: ProductUpsertForm = {
   uom: "UN",
 
   ncm: null,
+  ncm_id: null,
   ean: null,
   cest: null,
   fiscal_json: null,
@@ -135,6 +136,7 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
         uom: initialData.uom ?? "UN",
 
         ncm: initialData.ncm ?? null,
+        ncm_id: initialData.ncm_id ?? initialData.ncm_id ?? null,
         ean: initialData.ean ?? null,
         cest: initialData.cest ?? null,
         fiscal_json: initialData.fiscal_json ?? null,
@@ -201,6 +203,18 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
     });
   }
 
+  const ncm = useFiscalNcm();
+  const [ncmSearch, setNcmSearch] = React.useState("");
+  const [ncmOpen, setNcmOpen] = React.useState(false);
+
+  // debounce simples
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      ncm.setQuery((q) => ({ ...q, page: 1, search: ncmSearch || undefined, active: "1" }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [ncmSearch, ncm.setQuery]);
+
   async function handleSubmit() {
     // Converte textos -> números (mesmo se o usuário não deu blur)
     const price = parseMoneyTextOrZero(priceText);
@@ -234,8 +248,10 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
 
     const payload = {
       ...parsed.data,
+      ncm_id: parsed.data.ncm_id ?? parsed.data.ncm_id ?? null,
       track_inventory: parsed.data.kind === "service" ? false : Boolean(parsed.data.track_inventory ?? true),
     };
+    delete (payload as any).ncmId;
 
     await onSubmit(payload);
   }
@@ -378,9 +394,64 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
 
             <TabsContent value="fiscal" className="mt-4 space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label>NCM</Label>
-                  <Input value={form.ncm ?? ""} onChange={(e) => set("ncm", e.target.value)} />
+
+                  <Input
+                    value={form.ncm ?? ""}
+                    onFocus={() => setNcmOpen(true)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      set("ncm_id", null);
+                      set("ncm", v);        
+                      setNcmSearch(v);
+                      setNcmOpen(true);
+                    }}
+                    placeholder="Digite para buscar (código ou descrição)"
+                  />
+
+                  {ncmOpen ? (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow">
+                      <div className="p-2 text-xs text-muted-foreground">
+                        {ncm.loading ? "Buscando..." : `Resultados: ${ncm.data?.items?.length ?? 0}`}
+                      </div>
+
+                      <div className="max-h-64 overflow-auto">
+                        {(ncm.data?.items ?? []).map((it) => (
+                          <button
+                            key={it.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-muted"
+                            onClick={() => {
+                              set("ncm_id", Number(it.id));
+                              set("ncm", String(it.code)); // mostra code no campo (simples e consistente)
+                              setNcmOpen(false);
+                            }}
+                          >
+                            <div className="font-mono text-sm">{it.code}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-2">{it.description}</div>
+                          </button>
+                        ))}
+
+                        {!ncm.loading && (ncm.data?.items?.length ?? 0) === 0 ? (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            Nenhum NCM encontrado.
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="p-2 flex justify-end">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setNcmOpen(false)}
+                        >
+                          Fechar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
