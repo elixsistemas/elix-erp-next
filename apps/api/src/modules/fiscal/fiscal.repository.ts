@@ -669,3 +669,56 @@ export async function upsertCestMany(items: CestCreate[], dryRun: boolean) {
     itemsCount: items.length,
   };
 }
+
+type FixedFiscalRow = {
+  id: number;
+  code: string;
+  description: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+async function listFixedTable(table: string, q: ListQuery) {
+  const pool = await getPool();
+  const { page, pageSize, offset, active, search } = parsePaging(q);
+
+  // table é controlado pelo código (hardcoded abaixo), não vem do usuário ✅
+  const res = await pool.request()
+    .input("offset", offset)
+    .input("pageSize", pageSize)
+    .input("active", active)
+    .input("search", `%${search}%`)
+    .query(`
+      ;WITH base AS (
+        SELECT id, code, description, active, created_at, updated_at
+        FROM dbo.${table}
+        WHERE (@active IS NULL OR active = @active)
+          AND (
+            @search = '%%'
+            OR code LIKE @search
+            OR description LIKE @search
+          )
+      )
+      SELECT
+        (SELECT COUNT(1) FROM base) AS total,
+        (SELECT
+           id, code, description, active, created_at, updated_at
+         FROM base
+         ORDER BY code
+         OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+         FOR JSON PATH) AS itemsJson;
+    `);
+
+  const row = res.recordset?.[0] ?? { total: 0, itemsJson: "[]" };
+  const items = JSON.parse(row.itemsJson ?? "[]") as FixedFiscalRow[];
+  return { page, pageSize, total: Number(row.total ?? 0), items };
+}
+
+export function listUom(q: ListQuery) { return listFixedTable("fiscal_uom", q); }
+export function listCsosn(q: ListQuery) { return listFixedTable("fiscal_csosn", q); }
+export function listIcmsOrigem(q: ListQuery) { return listFixedTable("fiscal_icms_origem", q); }
+export function listCstIcms(q: ListQuery) { return listFixedTable("fiscal_cst_icms", q); }
+export function listPisCst(q: ListQuery) { return listFixedTable("fiscal_pis_cst", q); }
+export function listCofinsCst(q: ListQuery) { return listFixedTable("fiscal_cofins_cst", q); }
+export function listIpiCst(q: ListQuery) { return listFixedTable("fiscal_ipi_cst", q); }

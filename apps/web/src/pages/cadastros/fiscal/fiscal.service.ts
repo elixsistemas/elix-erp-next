@@ -9,7 +9,9 @@ import type {
   Cest,
   CestUpsert,
   ImportResult,
+  Uom,
 } from "./fiscal.types";
+import type { FiscalFixed } from "./fiscal.types";
 
 function toQueryString(q: ListFiscalQuery = {}) {
   const qs = new URLSearchParams();
@@ -131,4 +133,35 @@ export async function importCestFile(file: File, dryRun = false) {
     method: "POST",
     body: fd,
   });
+}
+
+/* =========================
+   UOM
+========================= */
+export async function listUom(query: ListFiscalQuery = {}) {
+  return api<PagedResult<Uom>>(`/fiscal/uom${toQueryString(query)}`);
+}
+
+export async function listCsosn(query: ListFiscalQuery = {}) {
+  return api<PagedResult<FiscalFixed>>(`/fiscal/csosn${toQueryString(query)}`);
+}
+
+export async function listIcmsOrigem(query: ListFiscalQuery = {}) {
+  return api<PagedResult<FiscalFixed>>(`/fiscal/icms-origem${toQueryString(query)}`);
+}
+
+export async function listCstIcms(query: ListFiscalQuery = {}) {
+  return api<PagedResult<FiscalFixed>>(`/fiscal/cst-icms${toQueryString(query)}`);
+}
+
+export async function listPisCst(query: ListFiscalQuery = {}) {
+  return api<PagedResult<FiscalFixed>>(`/fiscal/pis-cst${toQueryString(query)}`);
+}
+
+export async function listCofinsCst(query: ListFiscalQuery = {}) {
+  return api<PagedResult<FiscalFixed>>(`/fiscal/cofins-cst${toQueryString(query)}`);
+}
+
+export async function listIpiCst(query: ListFiscalQuery = {}) {
+  return api<PagedResult<FiscalFixed>>(`/fiscal/ipi-cst${toQueryString(query)}`);
 }

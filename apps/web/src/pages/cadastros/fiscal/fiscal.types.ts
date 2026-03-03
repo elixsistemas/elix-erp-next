@@ -1,8 +1,26 @@
+export type FiscalFixed = {
+  id: number;
+  code: string;
+  description: string;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type Cest = {
   id: number;
   code: string;
   description: string;
   segment: string | null;
+  active: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type Uom = {
+  id: number;
+  code: string;
+  description: string;
   active: boolean;
   created_at?: string;
   updated_at?: string;
@@ -23,8 +41,8 @@ export type PagedResult<T> = {
 };
 
 export type ListFiscalQuery = {
-  search?: string;          // backend usa search
-  active?: "1" | "0";       // backend usa "1"/"0" (ou undefined)
+  search?: string;          
+  active?: "1" | "0";       
   page?: number;
   pageSize?: number;
 };

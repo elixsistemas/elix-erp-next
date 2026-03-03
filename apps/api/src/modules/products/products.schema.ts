@@ -31,6 +31,8 @@ export const ProductBaseSchema = z.object({
   track_inventory: z.coerce.boolean().optional().nullable(),
   active: z.coerce.boolean().optional().nullable(),
 
+  uomId: z.coerce.number().int().positive().optional().nullable(),
+  cestId: z.coerce.number().int().positive().optional().nullable(),
   cest: z.string().trim().min(1).max(20).optional().nullable(),
   fiscal_json: z.string().optional().nullable(),
   image_url: z.string().trim().max(500).optional().nullable(),

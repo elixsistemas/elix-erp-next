@@ -334,3 +334,60 @@ export async function importCest(req: FastifyRequest, rep: FastifyReply) {
     return zodFail(rep, err);
   }
 }
+
+// FIXAS
+export async function listUom(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query); // ✅ mesmo schema (search/active/page/pageSize)
+    const out = await service.listUom(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}
+
+export async function listCsosn(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query);
+    const out = await service.listCsosn(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}
+
+export async function listIcmsOrigem(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query);
+    const out = await service.listIcmsOrigem(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}
+
+export async function listCstIcms(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query);
+    const out = await service.listCstIcms(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}
+
+export async function listPisCst(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query);
+    const out = await service.listPisCst(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}
+
+export async function listCofinsCst(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query);
+    const out = await service.listCofinsCst(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}
+
+export async function listIpiCst(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const q = CfopListQuerySchema.parse(req.query);
+    const out = await service.listIpiCst(q);
+    return rep.send(out);
+  } catch (err) { return zodFail(rep, err); }
+}

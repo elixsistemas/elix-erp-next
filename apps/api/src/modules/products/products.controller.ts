@@ -63,9 +63,12 @@ export async function create(req: FastifyRequest, rep: FastifyReply) {
     const created = await service.create(companyId, payload);
 
     if (created && typeof created === "object" && "error" in created) {
-      if (created.error === "SKU_ALREADY_EXISTS") return rep.code(409).send({ message: "SKU already exists" });
-      if (created.error === "EAN_ALREADY_EXISTS") return rep.code(409).send({ message: "EAN already exists" });
-      return rep.code(400).send({ message: "Cannot create product" });
+      if (created.error === "SKU_ALREADY_EXISTS")
+        return rep.code(409).send({ code: "SKU_ALREADY_EXISTS", message: "SKU já existe." });
+
+      if (created.error === "EAN_ALREADY_EXISTS")
+        return rep.code(409).send({ code: "EAN_ALREADY_EXISTS", message: "EAN já existe." });
+            return rep.code(400).send({ message: "Cannot create product" });
     }
 
     return rep.code(201).send(created);
@@ -92,9 +95,19 @@ export async function update(req: FastifyRequest, rep: FastifyReply) {
     if (!updated) return rep.code(404).send({ message: "Product not found" });
 
     if (typeof updated === "object" && "error" in updated) {
-      if (updated.error === "SKU_ALREADY_EXISTS") return rep.code(409).send({ message: "SKU already exists" });
-      if (updated.error === "EAN_ALREADY_EXISTS") return rep.code(409).send({ message: "EAN already exists" });
-      return rep.code(400).send({ message: "Cannot update product" });
+      if (updated.error === "SKU_ALREADY_EXISTS")
+        return rep.code(409).send({ code: "SKU_ALREADY_EXISTS", message: "SKU já existe." });
+
+      if (updated.error === "EAN_ALREADY_EXISTS")
+        return rep.code(409).send({ code: "EAN_ALREADY_EXISTS", message: "EAN já existe." });
+
+      if (updated.error === "SKU_LOCKED_AFTER_USAGE")
+        return rep.code(409).send({
+          code: "SKU_LOCKED_AFTER_USAGE",
+          message: "SKU não pode ser alterado após uso (estoque/venda/pedido/orçamento).",
+        });
+
+      return rep.code(400).send({ code: "CANNOT_UPDATE_PRODUCT", message: "Não foi possível atualizar o produto." });
     }
 
     return rep.send(updated);

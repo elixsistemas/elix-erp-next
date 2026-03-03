@@ -8,11 +8,15 @@ export const ProductUpsertSchema = z.object({
 
   description: z.string().trim().max(2000).optional().nullable(),
   uom: z.string().trim().max(10).optional().nullable(),
+  uom_id: z.coerce.number().int().positive().optional().nullable(), 
 
   ncm: z.string().trim().max(20).optional().nullable(),
   ncm_id: z.coerce.number().int().positive().optional().nullable(),
   ean: z.string().trim().max(30).optional().nullable(),
+
   cest: z.string().trim().max(20).optional().nullable(),
+  cest_id: z.coerce.number().int().positive().optional().nullable(), 
+
   fiscal_json: z.string().optional().nullable(),
 
   price: z.coerce.number().min(0, "Preço inválido").default(0),

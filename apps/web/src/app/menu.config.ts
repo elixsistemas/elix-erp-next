@@ -72,7 +72,7 @@ export const MENU_CONFIG: MenuItem[] = [
       { key: "suppliers", label: "Fornecedores", path: "/cadastros/fornecedores", perm: "suppliers.read" },
       { key: "customers", label: "Clientes", path: "/cadastros/clientes", perm: "customers.read" },
       { key: "products", label: "Produtos", path: "/cadastros/produtos", perm: "products.read" },
-      { key: "fiscal_registry", label: "CFOP & NCM", path: "/cadastros/fiscal", perm: "fiscal_cfop.read" },
+      { key: "fiscal_registry", label: "Base Fiscal", path: "/cadastros/fiscal", perm: "fiscal_cfop.read" },
       { key: "services", label: "Serviços", path: "/cadastros/servicos", perm: "services.read" },
       { key: "bank_accounts", label: "Contas Bancárias", path: "/cadastros/contas-bancarias", perm: "bank_accounts.read" },
       { key: "payment_methods", label: "Meios de pagamento", path: "/cadastros/meios-pagamento", perm: "payment_methods.read" },

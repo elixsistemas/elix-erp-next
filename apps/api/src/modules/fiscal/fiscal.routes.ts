@@ -43,68 +43,70 @@ export async function fiscalRoutes(app: FastifyInstance) {
 
   app.post("/fiscal/ncm/import", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importNcm);
 
-  app.post(
-    "/fiscal/issue",
-    { preHandler: [requireAuth, requirePermission("fiscal_issue.create")] },
-    controller.issueBySale
-  );
+  app.post("/fiscal/issue", { preHandler: [requireAuth, requirePermission("fiscal_issue.create")] }, controller.issueBySale);
 
-  app.get(
-    "/fiscal/by-sale",
-    { preHandler: [requireAuth, requirePermission("fiscal_documents.read")] },
-    controller.listDocsBySale
-  );
+  app.get("/fiscal/by-sale", { preHandler: [requireAuth, requirePermission("fiscal_documents.read")] }, controller.listDocsBySale);
 
   // CFOP upload
-  app.post(
-    "/fiscal/cfop/import-file",
-    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
-    controller.importCfopFile
-  );
+  app.post("/fiscal/cfop/import-file", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importCfopFile);
 
   // NCM upload
-  app.post(
-    "/fiscal/ncm/import-file",
-    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
-    controller.importNcmFile
-  );
+  app.post("/fiscal/ncm/import-file", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importNcmFile);
 
     // CEST
-  app.get(
-    "/fiscal/cest",
-    { preHandler: [requireAuth, requirePermission("fiscal_cest.read")] },
-    controller.listCest
-  );
+  app.get("/fiscal/cest", { preHandler: [requireAuth, requirePermission("fiscal_cest.read")] }, controller.listCest);
 
-  app.post(
-    "/fiscal/cest",
-    { preHandler: [requireAuth, requirePermission("fiscal_cest.create")] },
-    controller.createCest
-  );
+  app.post("/fiscal/cest", { preHandler: [requireAuth, requirePermission("fiscal_cest.create")] }, controller.createCest);
 
-  app.patch<{ Params: IdParams }>(
-    "/fiscal/cest/:id",
-    { preHandler: [requireAuth, requirePermission("fiscal_cest.update")] },
-    controller.updateCest
-  );
+  app.patch<{ Params: IdParams }>("/fiscal/cest/:id", { preHandler: [requireAuth, requirePermission("fiscal_cest.update")] }, controller.updateCest);
 
-  app.patch<{ Params: IdParams }>(
-    "/fiscal/cest/:id/toggle",
-    { preHandler: [requireAuth, requirePermission("fiscal_cest.toggle")] },
-    controller.toggleCest
-  );
+  app.patch<{ Params: IdParams }>("/fiscal/cest/:id/toggle", { preHandler: [requireAuth, requirePermission("fiscal_cest.toggle")] }, controller.toggleCest);
 
-  app.post(
-    "/fiscal/cest/import",
-    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
-    controller.importCest
-  );
-
+  app.post("/fiscal/cest/import", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importCest);
   // CEST upload
-  app.post(
-    "/fiscal/cest/import-file",
-    { preHandler: [requireAuth, requirePermission("fiscal_import.create")] },
-    controller.importCestFile
+  app.post("/fiscal/cest/import-file", { preHandler: [requireAuth, requirePermission("fiscal_import.create")] }, controller.importCestFile);
+
+  // ✅ FISCAIS FIXAS (READ-ONLY)
+  app.get(
+    "/fiscal/uom",
+    { preHandler: [requireAuth, requirePermission("fiscal_uom.read")] },
+    controller.listUom
+  );
+
+  app.get(
+    "/fiscal/csosn",
+    { preHandler: [requireAuth, requirePermission("fiscal_csosn.read")] },
+    controller.listCsosn
+  );
+
+  app.get(
+    "/fiscal/icms-origem",
+    { preHandler: [requireAuth, requirePermission("fiscal_icms_origem.read")] },
+    controller.listIcmsOrigem
+  );
+
+  app.get(
+    "/fiscal/cst-icms",
+    { preHandler: [requireAuth, requirePermission("fiscal_cst_icms.read")] },
+    controller.listCstIcms
+  );
+
+  app.get(
+    "/fiscal/pis-cst",
+    { preHandler: [requireAuth, requirePermission("fiscal_pis_cst.read")] },
+    controller.listPisCst
+  );
+
+  app.get(
+    "/fiscal/cofins-cst",
+    { preHandler: [requireAuth, requirePermission("fiscal_cofins_cst.read")] },
+    controller.listCofinsCst
+  );
+
+  app.get(
+    "/fiscal/ipi-cst",
+    { preHandler: [requireAuth, requirePermission("fiscal_ipi_cst.read")] },
+    controller.listIpiCst
   );
 
 }

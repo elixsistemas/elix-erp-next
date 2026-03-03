@@ -15,7 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { useFiscalCest } from "@/pages/cadastros/fiscal/useFiscalCest";
+import { useFiscalUom } from "@/pages/cadastros/fiscal/useFiscalUom";
 import type { Product } from "../products.types";
 import { type ProductUpsertForm, ProductUpsertSchema } from "../products.schema";
 import { getProductStock } from "../products.service";
@@ -38,11 +39,13 @@ const empty: ProductUpsertForm = {
 
   description: null,
   uom: "UN",
+  uom_id: null,
 
   ncm: null,
   ncm_id: null,
   ean: null,
   cest: null,
+  cest_id: null,
   fiscal_json: null,
 
   price: 0,
@@ -134,11 +137,13 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
 
         description: initialData.description ?? null,
         uom: initialData.uom ?? "UN",
+        uom_id: (initialData as any).uom_id ?? null,
 
         ncm: initialData.ncm ?? null,
         ncm_id: initialData.ncm_id ?? initialData.ncm_id ?? null,
         ean: initialData.ean ?? null,
         cest: initialData.cest ?? null,
+        cest_id: (initialData as any).cest_id ?? null,
         fiscal_json: initialData.fiscal_json ?? null,
 
         price: Number(initialData.price ?? 0),
@@ -203,6 +208,14 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
     });
   }
 
+  const cest = useFiscalCest();
+  const [cestSearch, setCestSearch] = React.useState("");
+  const [cestOpen, setCestOpen] = React.useState(false);
+
+  const uom = useFiscalUom();
+  const [uomSearch, setUomSearch] = React.useState("");
+  const [uomOpen, setUomOpen] = React.useState(false);
+
   const ncm = useFiscalNcm();
   const [ncmSearch, setNcmSearch] = React.useState("");
   const [ncmOpen, setNcmOpen] = React.useState(false);
@@ -214,6 +227,20 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
     }, 300);
     return () => clearTimeout(t);
   }, [ncmSearch, ncm.setQuery]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      cest.setQuery((q) => ({ ...q, page: 1, search: cestSearch || undefined, active: "1" }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [cestSearch]);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      uom.setQuery((q) => ({ ...q, page: 1, search: uomSearch || undefined, active: "1" }));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [uomSearch]);
 
   async function handleSubmit() {
     // Converte textos -> números (mesmo se o usuário não deu blur)
@@ -301,13 +328,59 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
                   <Input value={form.sku ?? ""} onChange={(e) => set("sku", e.target.value)} />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label>Unidade (UOM)</Label>
+
                   <Input
                     value={form.uom ?? ""}
-                    onChange={(e) => set("uom", e.target.value)}
-                    placeholder="UN, KG, CX..."
+                    onFocus={() => setUomOpen(true)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      set("uom_id", null);
+                      set("uom", v);
+                      setUomSearch(v);
+                      setUomOpen(true);
+                    }}
+                    placeholder="Digite para buscar (UN, KG, CX...)"
                   />
+
+                  {uomOpen ? (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow">
+                      <div className="p-2 text-xs text-muted-foreground">
+                        {uom.loading ? "Buscando..." : `Resultados: ${uom.data?.items?.length ?? 0}`}
+                      </div>
+
+                      <div className="max-h-64 overflow-auto">
+                        {(uom.data?.items ?? []).map((it) => (
+                          <button
+                            key={it.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-muted"
+                            onClick={() => {
+                              set("uom_id", Number(it.id));
+                              set("uom", String(it.code));
+                              setUomOpen(false);
+                            }}
+                          >
+                            <div className="font-mono text-sm">{it.code}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-2">{it.description}</div>
+                          </button>
+                        ))}
+
+                        {!uom.loading && (uom.data?.items?.length ?? 0) === 0 ? (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            Nenhuma UOM encontrada.
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="p-2 flex justify-end">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setUomOpen(false)}>
+                          Fechar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="flex items-center justify-between border rounded-lg p-3 md:col-span-1">
@@ -459,9 +532,59 @@ export function ProductSheet({ open, onOpenChange, mode, saving, initialData, on
                   <Input value={form.ean ?? ""} onChange={(e) => set("ean", e.target.value)} />
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label>CEST</Label>
-                  <Input value={form.cest ?? ""} onChange={(e) => set("cest", e.target.value)} />
+
+                  <Input
+                    value={form.cest ?? ""}
+                    onFocus={() => setCestOpen(true)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      set("cest_id", null);
+                      set("cest", v);
+                      setCestSearch(v);
+                      setCestOpen(true);
+                    }}
+                    placeholder="Digite para buscar (código ou descrição)"
+                  />
+
+                  {cestOpen ? (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-background shadow">
+                      <div className="p-2 text-xs text-muted-foreground">
+                        {cest.loading ? "Buscando..." : `Resultados: ${cest.data?.items?.length ?? 0}`}
+                      </div>
+
+                      <div className="max-h-64 overflow-auto">
+                        {(cest.data?.items ?? []).map((it) => (
+                          <button
+                            key={it.id}
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-muted"
+                            onClick={() => {
+                              set("cest_id", Number(it.id));
+                              set("cest", String(it.code));
+                              setCestOpen(false);
+                            }}
+                          >
+                            <div className="font-mono text-sm">{it.code}</div>
+                            <div className="text-xs text-muted-foreground line-clamp-2">{it.description}</div>
+                          </button>
+                        ))}
+
+                        {!cest.loading && (cest.data?.items?.length ?? 0) === 0 ? (
+                          <div className="px-3 py-3 text-sm text-muted-foreground">
+                            Nenhum CEST encontrado.
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <div className="p-2 flex justify-end">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setCestOpen(false)}>
+                          Fechar
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

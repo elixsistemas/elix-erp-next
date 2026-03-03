@@ -11,11 +11,13 @@ export type Product = {
 
   description?: string | null;
   uom?: string | null;
+  uom_id?: number | null;
 
   ncm?: string | null;
   ncm_id?: number | null;
   ean?: string | null;
   cest?: string | null;
+  cest_id?: number | null;
   fiscal_json?: string | null;
 
   price: number;
@@ -42,11 +44,15 @@ export type ProductCreate = {
 
   description?: string | null;
   uom?: string | null;
+  uom_id?: number | null;     
 
   ncm?: string | null;
   ncm_id?: number | null;
   ean?: string | null;
+
   cest?: string | null;
+  cest_id?: number | null;       
+
   fiscal_json?: string | null;
 
   price?: number;
