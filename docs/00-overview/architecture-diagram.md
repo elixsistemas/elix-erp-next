@@ -1,74 +1,60 @@
-# Elix ERP Next — Architecture Diagram (Produto)
+# Elix ERP Next — Architecture Diagram
 
-Este documento é o **diagrama oficial** de arquitetura do Elix ERP Next.
-Ele conecta: **domínios do ERP → módulos do backend → UX/menu → contratos entre serviços**.
-
-Objetivo:
-- servir como referência contínua (fonte de verdade)
-- evitar duplicidade de módulos/rotas/conceitos
-- manter o sistema coerente ao longo do ciclo de vida
+Este documento descreve a arquitetura de alto nível do **Elix ERP Next**.
+Os diagramas usam **Mermaid**, que é renderizado automaticamente pelo GitHub.
 
 ---
 
-## 1) Visão macro do sistema (SaaS multiempresa)
+# 1. Visão geral do sistema
 
 ```mermaid
 flowchart TB
-  U[Usuário] -->|UI| WEB[apps/web (React + Vite)]
-  WEB -->|HTTP + JWT| API[apps/api (Fastify)]
-  API -->|SQL| DB[(SQL Server)]
-  API -->|Logs/Auditoria| AUD[(Audit/Logs - futuro)]
 
-  subgraph SaaS[Escopo SaaS]
-    API
-    DB
-  end
+User[Usuário]
+Web[Frontend React + Vite]
+API[Backend Fastify API]
+DB[(SQL Server)]
 
-  note1{{Multi-tenant: companyId em req.auth e nas queries}} --- API
-  note2{{Feature gating: company_modules + requireModule()}} --- API
-  note3{{RBAC: roles/perms + requirePermission()}} --- API
+User --> Web
+Web -->|HTTP + JWT| API
+API --> DB
 
-  2) Domínios do ERP (mapa mental + UX)
+API -->|logs / auditoria| Logs[(Logs / Auditoria - futuro)]
+```
 
-  flowchart LR
-  CORE[Core / Plataforma] --> REG[Cadastros]
-  REG --> COM[Comercial]
-  COM --> FISC[Fiscal]
-  COM --> INV[Estoque]
-  COM --> FIN[Financeiro]
-  COM --> REP[Relatórios]
-  COM --> DASH[Dashboard]
+---
 
-  CORE:::core
-  REG:::dom
-  COM:::dom
-  FISC:::dom
-  INV:::dom
-  FIN:::dom
-  REP:::obs
-  DASH:::obs
+# 2. Domínios do ERP
 
-  classDef core fill:#222,color:#fff,stroke:#555,stroke-width:1px;
-  classDef dom fill:#0b3d91,color:#fff,stroke:#0b3d91,stroke-width:1px;
-  classDef obs fill:#3a3a3a,color:#fff,stroke:#666,stroke-width:1px;
+```mermaid
+flowchart LR
 
-Leitura correta do desenho:
+Core[Core / Plataforma]
+Cadastros[Cadastros]
+Comercial[Comercial]
+Fiscal[Fiscal]
+Estoque[Estoque]
+Financeiro[Financeiro]
+Relatorios[Relatórios]
+Dashboard[Dashboard]
 
-    Cadastros alimenta todo mundo.
+Core --> Cadastros
+Cadastros --> Comercial
+Comercial --> Fiscal
+Comercial --> Estoque
+Comercial --> Financeiro
+Comercial --> Relatorios
+Comercial --> Dashboard
+```
 
-    Comercial é o gatilho do “mundo real”.
+---
 
-    A Venda é o evento central que dispara: Fiscal + Estoque + Financeiro.
+# 3. Módulos do Backend
 
-    Dashboard/Relatórios observam (não devem ser o lugar onde regras de negócio nascem).
-
-3) Back-end: módulos atuais (estado real do repo)
-
-    Fonte: apps/api/src/modules/*
-
+```mermaid
 mindmap
-  root((apps/api modules))
-    core
+  root((Elix API Modules))
+    Core
       auth
       users
       roles
@@ -76,174 +62,119 @@ mindmap
       company_modules
       branding
       dashboard
-    cadastros
+    Cadastros
       products
       customers
       suppliers
       bank_accounts
       payment_terms
-    comercial
+    Comercial
       quotes
       orders
       sales
-    estoque
+    Estoque
       inventory
       inventory_movements
-    financeiro
+    Financeiro
       receivables
       accounts_receivable
       bank_balance_events
-    fiscal
+    Fiscal
       fiscal
         engine
+```
 
-Nota importante:
+---
 
-receivables e accounts_receivable coexistem hoje → ver ADR 0003-receivables-naming.md.
+# 4. Fluxo principal do ERP
 
-4) Fluxo canônico do ERP (o “coração” do Elix)
-
+```mermaid
 sequenceDiagram
-  autonumber
-  participant UI as Web UI
-  participant API as API (Fastify)
-  participant COM as Comercial (sales)
-  participant FIS as Fiscal (engine)
-  participant INV as Estoque (movements)
-  participant FIN as Financeiro (receivables)
+autonumber
 
-  UI->>API: POST /sales (JWT)
-  API->>COM: service.createSale(dados)
-  COM->>FIS: fiscal.preflight(sale) [validar]
-  FIS-->>COM: ok + regras aplicáveis
-  COM->>INV: inventory.applyMovement(sale) [efeito colateral]
-  COM->>FIN: receivables.createFromSale(sale) [efeito colateral]
-  COM-->>API: sale criado
-  API-->>UI: 201 + sale
+participant UI as Web UI
+participant API as API
+participant COM as Comercial
+participant FIS as Fiscal Engine
+participant INV as Inventory
+participant FIN as Finance
 
- Regra de ouro: efeitos colaterais devem ser idempotentes (não duplicar movimentação/título se repetir a operação). 
+UI->>API: Criar Venda
+API->>COM: createSale()
 
- 5) Contratos entre módulos (anti-acoplamento acidental)
+COM->>FIS: fiscal.preflight()
+FIS-->>COM: regras fiscais
 
-Esses contratos são “interfaces mentais” (podem ser funções internas, não precisa microservices).
+COM->>INV: gerar movimentação
+COM->>FIN: gerar contas a receber
 
-Comercial → Fiscal
+COM-->>API: venda criada
+API-->>UI: resposta
+```
 
-fiscal.preflight(saleDraft): ValidationResult
+---
 
-fiscal.run(sale): FiscalResult
+# 5. Fluxo de impacto da venda
 
-Comercial → Estoque
+```mermaid
+flowchart TD
 
-inventory.applyMovement(source: "sale", sourceId, items[]): MovementResult
+Venda[Venda]
+Fiscal[Motor Fiscal]
+Estoque[Movimentação de Estoque]
+Financeiro[Contas a Receber]
 
-Comercial → Financeiro
+Venda --> Fiscal
+Venda --> Estoque
+Venda --> Financeiro
+```
 
-receivables.createFromSale(sale): Receivable[]
+---
 
-Diretriz:
+# 6. Segurança
 
-Comercial não calcula imposto manualmente (Fiscal manda).
+O backend utiliza três camadas de controle:
 
-Comercial não mexe em estoque com SQL direto (Estoque manda).
-
-Comercial não cria título na unha (Financeiro manda).
-
-6) Segurança e escopo (o que nunca pode falhar)
-Auth (JWT)
+### Autenticação
+JWT com:
 
 req.auth = { userId, companyId, roles, perms }
 
-RBAC
+### RBAC
+Middleware:
 
-requirePermission("x.y") em rotas sensíveis.
+requirePermission("permission_code")
 
-Feature gating
+### Feature gating por empresa
 
-company_modules + requireModule("module_key") em rotas de módulo.
+Tabela:
 
-Regra de vida:
+company_modules
 
-Menu filtra o que aparece.
-Middleware filtra o que existe.
+Middleware:
 
-7) Dicionário de Module Keys (diretriz do produto)
+requireModule("module_key")
 
-O module_key é capacidade vendável / feature gate.
-Não precisa ser 1:1 com pasta do módulo.
+---
 
-Exemplos iniciais (ver ADR 0001):
+# 7. Princípios arquiteturais
 
-commercial.sales
+O Elix ERP Next segue estes princípios:
 
-inventory.movements
+- arquitetura modular
+- multiempresa (multi-tenant)
+- domínio separado por módulos
+- controllers sem regra de negócio
+- regras no service layer
+- banco acessado apenas via repository
 
-finance.receivables
+---
 
-fiscal.documents
+# Referências
 
-8) Padrões de evolução (como manter o trem no trilho)
-Quando criar um módulo novo
+Documentos relacionados:
 
-criar pasta em apps/api/src/modules/<nome>
-
-incluir controller/service/repository/routes/schema
-
-definir module_key (feature gate)
-
-definir permissões (RBAC)
-
-adicionar item no menu (com module + perm)
-
-documentar decisão em docs/adr/
-
-Quando mudar uma decisão importante
-
-criar ADR curto: contexto → decisão → consequências
-
-linkar no ARCHITECTURE.md
-
-9) Backlog arquitetural (próximos degraus naturais)
-
-Padronizar module_key no banco (lowercase, sem variação)
-
-Endpoint /auth/me retornar modules + perms
-
-Front construir menu com module + perm
-
-Resolver naming receivables vs accounts_receivable
-
-Definir estados canônicos de Venda (draft/approved/cancelled)
-
-Idempotência (movimentações e títulos)
-
-10) Links de referência interna
-
-README.md
-
-ARCHITECTURE.md
-
-docs/00-overview/erp-map.md
-
+ARCHITECTURE.md  
+docs/00-overview/erp-map.md  
+docs/00-overview/erd-core.md  
 docs/adr/*
-
-
----
-
-## Onde isso entra na hierarquia
-Você fica com um “núcleo” de consulta assim:
-
-- `README.md` (como rodar)
-- `ARCHITECTURE.md` (visão geral)
-- `docs/00-overview/erp-map.md` (mapa funcional)
-- `docs/00-overview/architecture-diagram.md` (diagramas oficiais)
-- `docs/adr/*` (decisões)
-
----
-
-## Commit sugerido
-Quando você criar esses arquivos, manda um commit tipo:
-
-```bash
-git add docs/00-overview/architecture-diagram.md
-git commit -m "docs: add Elix architecture diagrams and canonical flows"
