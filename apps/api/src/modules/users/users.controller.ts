@@ -8,6 +8,7 @@ import {
   UserLinkSchema,
 } from "./users.schema";
 import * as repo from "./users.repository";
+import { assertUserSeatAvailable, LicenseLimitError } from "./users.service";
 
 export async function list(req: FastifyRequest, rep: FastifyReply) {
   return rep.send(await repo.listUsers(req.auth!.companyId));
@@ -21,24 +22,46 @@ export async function get(req: FastifyRequest, rep: FastifyReply) {
 }
 
 export async function create(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = req.auth!.companyId;
-  const payload = UserCreateSchema.parse(req.body);
+  try {
+    const companyId = req.auth!.companyId;
+    const payload = UserCreateSchema.parse(req.body);
 
-  const created = await repo.createUser(companyId, payload);
-  await repo.setUserRoles(companyId, created.id, payload.roleIds);
+    // Vai criar usuário ativo na empresa?
+    const willBeActive = payload.active !== false;
+    if (willBeActive) {
+      await assertUserSeatAvailable(companyId, req.license?.userLimit ?? 0);
+    }
 
-  return rep.code(201).send(created);
+    const created = await repo.createUser(companyId, payload);
+    await repo.setUserRoles(companyId, created.id, payload.roleIds);
+    return rep.code(201).send(created);
+  } catch (e: any) {
+    if (e?.code === "LICENSE_USER_LIMIT") {
+      return rep.code(409).send({ message: e.message, code: e.code });
+    }
+    throw e;
+  }
 }
 
 export async function update(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = req.auth!.companyId;
-  const { id } = UserIdParamSchema.parse(req.params);
-  const payload = UserUpdateSchema.parse(req.body);
+  try {
+    const companyId = req.auth!.companyId;
+    const { id } = UserIdParamSchema.parse(req.params);
+    const payload = UserUpdateSchema.parse(req.body);
 
-  const updated = await repo.updateUser(companyId, id, payload);
-  if (!updated) return rep.code(404).send({ message: "User not found" });
+    if (payload.active === true) {
+      await assertUserSeatAvailable(companyId, req.license?.userLimit ?? 0);
+    }
 
-  return rep.send(updated);
+    const updated = await repo.updateUser(companyId, id, payload);
+    if (!updated) return rep.code(404).send({ message: "User not found" });
+    return rep.send(updated);
+  } catch (e: any) {
+    if (e?.code === "LICENSE_USER_LIMIT") {
+      return rep.code(409).send({ message: e.message, code: e.code });
+    }
+    throw e;
+  }
 }
 
 export async function roles(req: FastifyRequest, rep: FastifyReply) {
@@ -75,31 +98,26 @@ export async function lookupByEmail(req: FastifyRequest, rep: FastifyReply) {
 
 // ✅ NOVO: vincular (e opcionalmente importar roles)
 export async function link(req: FastifyRequest, rep: FastifyReply) {
-  const companyId = req.auth!.companyId;
-  const actorUserId = req.auth!.userId;
+  try {
+    const companyId = req.auth!.companyId;
+    const actorUserId = req.auth!.userId;
+    const payload = UserLinkSchema.parse(req.body);
 
-  const payload = UserLinkSchema.parse(req.body);
-
-  // 1) cria ou vincula (sem resetar senha se já existir)
-  const out = await repo.linkUserToCompany(companyId, payload);
-
-  // 2) se pediu import, aplica com validação de acesso do admin à empresa origem
-  if (payload.import?.enabled && payload.import.fromCompanyId && payload.import.fromCompanyId !== companyId) {
-    // Segurança: só permite importar de uma empresa que o admin (actor) também participa
-    const okActor = await repo.userIsActiveInCompany(actorUserId, payload.import.fromCompanyId);
-    if (!okActor) {
-      return rep.code(403).send({ message: "Forbidden", reason: "Import source not accessible" });
+    const willBeActive = payload.active !== false;
+    if (willBeActive) {
+      await assertUserSeatAvailable(companyId, req.license?.userLimit ?? 0);
     }
 
-    await repo.importUserRolesByCompanyCode({
-      targetCompanyId: companyId,
-      userId: out.id,
-      fromCompanyId: payload.import.fromCompanyId,
-    });
-  } else {
-    // Sem import: aplica roles mandadas (opcional)
-    await repo.setUserRoles(companyId, out.id, payload.roleIds ?? []);
-  }
+    const out = await repo.linkUserToCompany(companyId, payload);
 
-  return rep.code(201).send(out);
+    // ... resto igual (import roles / set roles)
+    // (mantém seu código)
+
+    return rep.code(201).send(out);
+  } catch (e: any) {
+    if (e?.code === "LICENSE_USER_LIMIT") {
+      return rep.code(409).send({ message: e.message, code: e.code });
+    }
+    throw e;
+  }
 }

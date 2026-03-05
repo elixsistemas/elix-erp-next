@@ -2,6 +2,19 @@ import { getPool } from "../../config/db";
 import sql from "mssql";
 import bcrypt from "bcryptjs";
 
+export async function countActiveUsersInCompany(companyId: number) {
+  const pool = await getPool();
+  const res = await pool.request()
+    .input("companyId", companyId)
+    .query(`
+      SELECT COUNT(1) AS total
+      FROM dbo.user_companies
+      WHERE company_id = @companyId AND active = 1
+    `);
+
+  return Number(res.recordset?.[0]?.total ?? 0);
+}
+
 export async function listUsers(companyId: number) {
   const pool = await getPool();
   const res = await pool.request()
