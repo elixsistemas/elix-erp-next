@@ -4,18 +4,25 @@ export type MenuItem = {
   key: string;
   label: string;
   path: string;
-  module?: string; 
-  perm?: string;    
+
+  /** Feature gate (módulo/plug-in do SaaS). Ex: "fiscal", "nfe", "wms" */
+  module?: string;
+
+  /** RBAC permission code. Ex: "products.read" */
+  perm?: string;
+
   children?: MenuItem[];
 };
 
 export const MENU_CONFIG: MenuItem[] = [
-  { key: "home", label: "Home", path: "/dashboard" },
+  { key: "dashboard", label: "Dashboard", path: "/dashboard" },
 
+  // --- Operações / Comercial ---
   {
     key: "commercial",
     label: "Comercial",
     path: "/comercial",
+    module: "commercial",
     children: [
       { key: "quotes", label: "Orçamentos", path: "/comercial/orcamentos", perm: "quotes.read" },
       { key: "orders", label: "Pedidos", path: "/comercial/pedidos", perm: "orders.read" },
@@ -25,65 +32,85 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  {
-    key: "finance",
-    label: "Financeiro",
-    path: "/finance",
-    children: [
-      { key: "receivables", label: "Contas a receber", path: "/finance/receivables", perm: "receivables.read" },
-      { key: "payables", label: "Contas a pagar", path: "/finance/payables", perm: "payables.read" },
-      { key: "cashflow", label: "Fluxo de caixa", path: "/finance/cashflow", perm: "cashflow.read" },
-      { key: "conciliacao", label: "Conciliação", path: "/finance/reconciliation", perm: "reconciliation.read" },
-      { key: "payments", label: "Pagamentos", path: "/finance/payments", perm: "payments.read" },
-    ],
-  },
-
-  {
-    key: "fiscal",
-    label: "Fiscal",
-    path: "/fiscal",
-    children: [
-      { key: "fiscal_docs", label: "Documentos", path: "/fiscal/documents", perm: "fiscal_docs.read" },
-      { key: "nfe", label: "NF-e", path: "/fiscal/nfe", perm: "nfe.read" },
-      { key: "nfse", label: "NFS-e", path: "/fiscal/nfse", perm: "nfse.read" },
-      { key: "tax_rules", label: "Regras/Tributos", path: "/fiscal/tax-rules", perm: "tax_rules.read" },
-      { key: "tax_profiles", label: "Perfis fiscais", path: "/fiscal/tax-profiles", perm: "tax_profiles.read" },
-    ],
-  },
-
+  // --- Estoque (WMS-light no começo, evolui depois) ---
   {
     key: "inventory",
     label: "Estoque",
     path: "/inventory",
+    module: "inventory",
     children: [
       { key: "inventory_stock", label: "Saldo atual", path: "/inventory", perm: "inventory.read" },
       { key: "inventory_movs", label: "Movimentações", path: "/inventory/movements", perm: "inventory_movements.read" },
       { key: "inventory_counts", label: "Inventário", path: "/inventory/counts", perm: "inventory_counts.read" },
       { key: "inventory_locations", label: "Locais/Depósitos", path: "/inventory/locations", perm: "inventory_locations.read" },
+
+      // Atalho proposital: o usuário de estoque encontra "Produtos" aqui.
+      // Fonte da verdade continua em Cadastros.
+      { key: "inventory_products_shortcut", label: "Produtos (atalho)", path: "/cadastros/produtos", perm: "products.read" },
     ],
   },
 
+  // --- Financeiro ---
   {
-    key: "cadastros",
+    key: "finance",
+    label: "Financeiro",
+    path: "/finance",
+    module: "finance",
+    children: [
+      { key: "receivables", label: "Contas a receber", path: "/finance/receivables", perm: "receivables.read" },
+      { key: "payables", label: "Contas a pagar", path: "/finance/payables", perm: "payables.read" },
+      { key: "cashflow", label: "Fluxo de caixa", path: "/finance/cashflow", perm: "cashflow.read" },
+      { key: "reconciliation", label: "Conciliação", path: "/finance/reconciliation", perm: "reconciliation.read" },
+      { key: "payments", label: "Pagamentos", path: "/finance/payments", perm: "payments.read" },
+    ],
+  },
+
+  // --- Fiscal (motor determinístico + docs) ---
+  {
+    key: "fiscal",
+    label: "Fiscal",
+    path: "/fiscal",
+    module: "fiscal",
+    children: [
+      { key: "fiscal_docs", label: "Documentos", path: "/fiscal/documents", perm: "fiscal_docs.read" },
+
+      // Deixa visível só quando o módulo existir.
+      { key: "nfe", label: "NF-e", path: "/fiscal/nfe", module: "nfe", perm: "nfe.read" },
+      { key: "nfse", label: "NFS-e", path: "/fiscal/nfse", module: "nfse", perm: "nfse.read" },
+
+      { key: "tax_rules", label: "Regras/Tributos", path: "/fiscal/tax-rules", perm: "tax_rules.read" },
+      { key: "tax_profiles", label: "Perfis fiscais", path: "/fiscal/tax-profiles", perm: "tax_profiles.read" },
+    ],
+  },
+
+  // --- Cadastros (master data) ---
+  {
+    key: "registry",
     label: "Cadastros",
     path: "/cadastros",
+    module: "registry",
     children: [
       { key: "companies", label: "Empresas", path: "/cadastros/empresa", perm: "companies.read" },
-      { key: "suppliers", label: "Fornecedores", path: "/cadastros/fornecedores", perm: "suppliers.read" },
       { key: "customers", label: "Clientes", path: "/cadastros/clientes", perm: "customers.read" },
+      { key: "suppliers", label: "Fornecedores", path: "/cadastros/fornecedores", perm: "suppliers.read" },
       { key: "products", label: "Produtos", path: "/cadastros/produtos", perm: "products.read" },
-      { key: "fiscal_registry", label: "Base Fiscal", path: "/cadastros/fiscal", perm: "fiscal_cfop.read" },
       { key: "services", label: "Serviços", path: "/cadastros/servicos", perm: "services.read" },
+
+      // Base fiscal é master data fiscal (CFOP/NCM/CEST/CST etc.)
+      { key: "fiscal_registry", label: "Base Fiscal", path: "/cadastros/fiscal", module: "fiscal", perm: "fiscal_cfop.read" },
+
       { key: "bank_accounts", label: "Contas Bancárias", path: "/cadastros/contas-bancarias", perm: "bank_accounts.read" },
       { key: "payment_methods", label: "Meios de pagamento", path: "/cadastros/meios-pagamento", perm: "payment_methods.read" },
       { key: "payment_terms", label: "Condições", path: "/cadastros/condicoes", perm: "payment_terms.read" },
     ],
   },
 
+  // --- Relatórios / BI (começa simples, vira gigante) ---
   {
     key: "reports",
     label: "Relatórios",
     path: "/reports",
+    module: "reports",
     children: [
       { key: "reports_sales", label: "Vendas", path: "/reports/sales", perm: "reports_sales.read" },
       { key: "reports_finance", label: "Financeiro", path: "/reports/finance", perm: "reports_finance.read" },
@@ -92,15 +119,43 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
+  // --- Configurações (empresa/sistema/integrações) ---
   {
-    key: "admin",
-    label: "Administração",
-    path: "/admin",
+    key: "settings",
+    label: "Configurações",
+    path: "/settings",
+    module: "settings",
     children: [
-      { key: "users", label: "Usuários", path: "/admin/users", perm: "users.read" },
-      { key: "roles", label: "Perfis & Permissões", path: "/admin/roles", perm: "roles.read" },
-      { key: "settings", label: "Configurações", path: "/admin/settings", perm: "company_modules.read" },
-      { key: "audit", label: "Auditoria", path: "/admin/audit", perm: "audit.read" },
+      { key: "company_profile", label: "Empresa", path: "/settings/company", perm: "company.read" },
+      { key: "branding", label: "Identidade visual", path: "/settings/branding", perm: "branding.write" },
+      { key: "system_params", label: "Parâmetros do sistema", path: "/settings/system", perm: "settings.write" },
+      { key: "integrations", label: "Integrações", path: "/settings/integrations", perm: "integrations.read" },
+    ],
+  },
+
+  // --- Segurança (governança real) ---
+  {
+    key: "security",
+    label: "Segurança",
+    path: "/security",
+    module: "security",
+    children: [
+      { key: "users", label: "Usuários", path: "/security/users", perm: "users.read" },
+      { key: "roles", label: "Perfis & Permissões", path: "/security/roles", perm: "roles.read" },
+      { key: "audit", label: "Auditoria", path: "/security/audit", perm: "audit.read" },
+    ],
+  },
+
+  // --- Copilot (futurista, mas controlado por módulo) ---
+  {
+    key: "copilot",
+    label: "Copilot",
+    path: "/copilot",
+    module: "copilot",
+    children: [
+      { key: "copilot_fiscal", label: "Fiscal Copilot", path: "/copilot/fiscal", perm: "copilot_fiscal.use" },
+      { key: "copilot_products", label: "Sugestões p/ Produtos", path: "/copilot/products", perm: "copilot_products.use" },
+      { key: "copilot_alerts", label: "Alertas", path: "/copilot/alerts", perm: "copilot_alerts.read" },
     ],
   },
 ];
