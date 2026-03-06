@@ -63,9 +63,30 @@ function AppBoot() {
                 </RequireAccess>
               }
             />
-            <Route path="/cadastros/clientes" element={<CustomersPage />} />
-            <Route path="/cadastros/produtos" element={<ProductsPage />} />
-            <Route path="/cadastros/fornecedores" element={<SuppliersPage />} />
+            <Route
+              path="/cadastros/clientes"
+              element={
+                <RequireAccess perm="customers.read" module="cadastros.customers">
+                  <CustomersPage />
+                </RequireAccess>
+              }
+            />
+            <Route
+              path="/cadastros/produtos"
+              element={
+                <RequireAccess perm="products.read" module="cadastros.products">
+                  <ProductsPage />
+                </RequireAccess>
+              }
+            />
+            <Route
+              path="/cadastros/fornecedores"
+              element={
+                <RequireAccess perm="suppliers.read" module="cadastros.suppliers">
+                  <SuppliersPage />
+                </RequireAccess>
+              }
+            />
             <Route path="/cadastros/fiscal" element={<FiscalPage />} />
 
             {/* Estoque */}
