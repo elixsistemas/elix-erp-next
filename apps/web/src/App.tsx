@@ -33,6 +33,8 @@ import Login from "@/pages/Login";
 import Dashboard from "@/pages/dashboard/DashboardPage";
 import AppShell from "@/components/layout/AppShell";
 
+import { RequireAccess } from "@/components/auth/RequireAccess";
+
 import { Toaster } from "sonner";
 
 function AppBoot() {
@@ -53,7 +55,14 @@ function AppBoot() {
 
             {/* Cadastros */}
             <Route path="/cadastros/contas-bancarias" element={<BankAccountsPage />} />
-            <Route path="/cadastros/empresa" element={<CompanyPage />} />
+            <Route
+              path="/cadastros/empresa"
+              element={
+                <RequireAccess perm="companies.read" module="cadastros.companies">
+                  <CompanyPage />
+                </RequireAccess>
+              }
+            />
             <Route path="/cadastros/clientes" element={<CustomersPage />} />
             <Route path="/cadastros/produtos" element={<ProductsPage />} />
             <Route path="/cadastros/fornecedores" element={<SuppliersPage />} />
@@ -80,8 +89,22 @@ function AppBoot() {
             <Route path="/comercial/vendas/:id/print" element={<VendaPrintPage />} />
 
             {/* Admin */}
-            <Route path="/admin/roles" element={<RolesPage />} />
-            <Route path="/admin/users" element={<UsersPage />} />
+            <Route
+              path="/admin/roles"
+              element={
+                <RequireAccess perm="roles.read" module="admin.roles">
+                  <RolesPage />
+                </RequireAccess>
+              }
+            />
+            <Route
+              path="/admin/users"
+              element={
+                <RequireAccess perm="users.read" module="admin.users">
+                  <UsersPage />
+                </RequireAccess>
+              }
+            />
           </Route>
         </Route>
 

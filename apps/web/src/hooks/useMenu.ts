@@ -7,13 +7,10 @@ function hasPerm(item: MenuItem, perms: string[]) {
   return perms.includes(item.perm);
 }
 
-function moduleKeyOf(item: MenuItem): string {
-  return (item.module ?? item.key).trim();
-}
-
 function hasModule(item: MenuItem, modules: string[]) {
   if (item.key === "home") return true;
-  return modules.includes(moduleKeyOf(item));
+  if (!item.module) return true; // grupos de menu podem existir sem module
+  return modules.includes(item.module);
 }
 
 function filterMenu(items: MenuItem[], modules: string[], perms: string[]): MenuItem[] {

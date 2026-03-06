@@ -9,6 +9,7 @@ type User = {
   name: string;
   email: string;
   role: string;
+  roles?: string[];
 };
 
 type Company = {
@@ -18,14 +19,25 @@ type Company = {
   logo_mime?: string | null;
 };
 
+type License = {
+  status: "active" | "past_due" | "suspended" | "canceled";
+  dueAt: string;
+  graceDays: number;
+  planCode: string;
+  planName: string;
+  userLimit: number;
+  readOnly: boolean;
+} | null;
+
 type AuthContextType = {
   token: string | null;
   user: User | null;
   company: Company | null;
   modules: string[];
   permissions: string[];
+  roles: string[];
+  license: License;
   isLoading: boolean;
-
   login: (token: string) => Promise<void>;
   logout: () => void;
   refresh: () => Promise<void>;
@@ -39,26 +51,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [company, setCompany] = useState<Company | null>(null);
   const [modules, setModules] = useState<string[]>([]);
   const [permissions, setPermissions] = useState<string[]>([]);
+  const [roles, setRoles] = useState<string[]>([]);
+  const [license, setLicense] = useState<License>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // 🔄 Boot automático ao abrir o sistema
   useEffect(() => {
     const storedToken = localStorage.getItem("token");
     if (!storedToken) {
       setIsLoading(false);
       return;
     }
-
     setToken(storedToken);
     void initialize(storedToken);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function initialize(jwt: string) {
     setIsLoading(true);
-
     try {
-      const me = await api<any>("/auth/me", {
+      const me = await api("/auth/me", {
         auth: false,
         headers: { Authorization: `Bearer ${jwt}` },
       });
@@ -69,21 +79,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const perms = me.permissions ?? me.perms ?? [];
       setPermissions(Array.isArray(perms) ? perms : []);
+
+      const userRoles = me.user?.roles ?? [];
+      setRoles(Array.isArray(userRoles) ? userRoles : []);
+
+      setLicense(me.license ?? null);
     } catch {
-      // ✅ não chama logout aqui (evita efeitos colaterais em guards)
       localStorage.removeItem("token");
       setToken(null);
       setUser(null);
       setCompany(null);
       setModules([]);
       setPermissions([]);
+      setRoles([]);
+      setLicense(null);
     } finally {
       setIsLoading(false);
     }
   }
 
   async function login(jwt: string) {
-    // ✅ grava primeiro, depois inicializa
     localStorage.setItem("token", jwt);
     setToken(jwt);
     await initialize(jwt);
@@ -96,6 +111,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCompany(null);
     setModules([]);
     setPermissions([]);
+    setRoles([]);
+    setLicense(null);
     setIsLoading(false);
   }
 
@@ -113,6 +130,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         company,
         modules,
         permissions,
+        roles,
+        license,
         isLoading,
         login,
         logout,
@@ -126,6 +145,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth deve ser usado dentro de AuthProvider");
+  if (!context) {
+    throw new Error("useAuth deve ser usado dentro de AuthProvider");
+  }
   return context;
 }
