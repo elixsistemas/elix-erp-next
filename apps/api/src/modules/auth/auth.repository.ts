@@ -85,3 +85,62 @@ export async function getUserPermissions(companyId: number, userId: number): Pro
     .map((x: any) => String(x.code))
     .filter(Boolean);
 }
+
+export type CurrentLicense = {
+  status: "active" | "past_due" | "suspended" | "canceled";
+  dueAt: string;
+  graceDays: number;
+  planCode: string;
+  planName: string;
+  userLimit: number;
+  readOnly: boolean;
+};
+
+export async function getCurrentLicense(companyId: number): Promise<CurrentLicense | null> {
+  const pool = await getPool();
+  const res = await pool.request()
+    .input("companyId", companyId)
+    .query(`
+      SELECT TOP 1
+        status,
+        due_at,
+        ISNULL(user_limit_override, plan_user_limit) AS user_limit,
+        plan_grace_days AS grace_days,
+        plan_code,
+        plan_name
+      FROM dbo.v_company_current_license
+      WHERE company_id = @companyId
+      ORDER BY due_at DESC, id DESC
+    `);
+
+  const row = res.recordset?.[0];
+  if (!row) return null;
+
+  const dueAt = new Date(row.due_at);
+  const graceDays = Number(row.grace_days ?? 0);
+  const now = new Date();
+
+  let status = String(row.status).toLowerCase() as CurrentLicense["status"];
+  let readOnly = false;
+
+  if (status === "active" && now > dueAt) status = "past_due";
+
+  if (status === "past_due") {
+    const graceUntil = new Date(dueAt.getTime() + graceDays * 24 * 60 * 60 * 1000);
+    if (now > graceUntil) status = "suspended";
+  }
+
+  if (status === "suspended" || status === "canceled") {
+    readOnly = true;
+  }
+
+  return {
+    status,
+    dueAt: dueAt.toISOString(),
+    graceDays,
+    planCode: String(row.plan_code),
+    planName: String(row.plan_name),
+    userLimit: Number(row.user_limit ?? 0),
+    readOnly,
+  };
+}

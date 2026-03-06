@@ -3,7 +3,12 @@ import { getPool } from "../../config/db";
 import type { FastifyRequest, FastifyReply } from "fastify";
 import { LoginSchema, PreLoginSchema, SwitchCompanySchema } from "./auth.schema";
 import * as service from "./auth.service";
-import { getUserRoleCodes, getUserPermissions, getCompanyModules } from "./auth.repository";
+import {
+  getUserRoleCodes,
+  getUserPermissions,
+  getCompanyModules,
+  getCurrentLicense,
+} from "./auth.repository";
 
 export async function companies(req: FastifyRequest, rep: FastifyReply) {
   if (!req.auth) return rep.code(401).send({ message: "Unauthorized" });
@@ -90,10 +95,11 @@ export async function me(req: FastifyRequest, rep: FastifyReply) {
   const row = userRes.recordset?.[0];
   if (!row) return rep.code(401).send({ message: "Invalid session" });
 
-  const [modules, permissions, roles] = await Promise.all([
+  const [modules, permissions, roles, license] = await Promise.all([
     getCompanyModules(companyId),
     getUserPermissions(companyId, userId),
     getUserRoleCodes(companyId, userId),
+    getCurrentLicense(companyId),
   ]);
 
   const rolesFinal = roles.length ? roles : ["user"];
@@ -116,5 +122,6 @@ export async function me(req: FastifyRequest, rep: FastifyReply) {
     },
     modules,
     permissions,
+    license,
   });
 }
