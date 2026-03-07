@@ -8,7 +8,7 @@ type IdParams = { id: string };
 export async function ordersRoutes(app: FastifyInstance) {
   app.register(
     async function (app) {
-      app.addHook("preHandler", requireModule("commercial.sales"));
+      app.addHook("preHandler", requireModule("commercial.orders"));
         app.get(
           "/orders",
           { preHandler: [requireAuth, requirePermission("orders.read")] },
