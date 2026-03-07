@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { BrandingProvider } from "@/contexts/BrandingContext";
 import { GlobalUiResets } from "@/components/layout/GlobalUiResets";
+import { RequireModule } from "@/components/auth/RequireModule";
 
 import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPage";
 import CustomersPage from "@/pages/cadastros/clientes/CustomersPage";
@@ -56,95 +57,275 @@ function AppBoot() {
             <Route path="/dashboard" element={<Dashboard />} />
 
             {/* Cadastros */}
-            <Route path="/cadastros/contas-bancarias" element={<BankAccountsPage />} />
-            <Route
-              path="/cadastros/empresa"
-              element={
-                <RequireAccess perm="companies.read" module="cadastros.companies">
-                  <CompanyPage />
-                </RequireAccess>
-              }
-            />
-            <Route
-              path="/cadastros/clientes"
-              element={
-                <RequireAccess perm="customers.read" module="cadastros.customers">
-                  <CustomersPage />
-                </RequireAccess>
-              }
-            />
-            <Route
-              path="/cadastros/produtos"
-              element={
-                <RequireAccess perm="products.read" module="cadastros.products">
-                  <ProductsPage />
-                </RequireAccess>
-              }
-            />
-            <Route
-              path="/cadastros/fornecedores"
-              element={
-                <RequireAccess perm="suppliers.read" module="cadastros.suppliers">
-                  <SuppliersPage />
-                </RequireAccess>
-              }
-            />
-            <Route path="/cadastros/fiscal" element={<FiscalPage />} />
+            <Route element={<RequireModule module="cadastros.bank_accounts" />}>
+              <Route path="/cadastros/contas-bancarias" element={<BankAccountsPage />} />
+              <Route
+                path="/cadastros/empresa"
+                element={
+                  <RequireAccess perm="companies.read" >
+                    <CompanyPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="cadastros.customers" />}>
+              <Route
+                path="/cadastros/clientes"
+                element={
+                  <RequireAccess perm="customers.read" >
+                    <CustomersPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="cadastros.products" />}>
+              <Route
+                path="/cadastros/produtos"
+                element={
+                  <RequireAccess perm="products.read">
+                    <ProductsPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+              <Route element={<RequireModule module="cadastros.suppliers" />}>
+                <Route
+                  path="/cadastros/fornecedores"
+                  element={
+                    <RequireAccess perm="suppliers.read">
+                      <SuppliersPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="fiscal.rules" />}>
+              <Route
+                path="/cadastros/fiscal"
+                element={
+                  <RequireAccess perm="fiscal.rules">
+                    <FiscalPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
             {/* Estoque */}
-            <Route path="/inventory" element={<InventoryPage />} />
-            <Route path="/inventory/movements" element={<InventoryMovementsPage />} />
+            <Route element={<RequireModule module="inventory.stock" />}>
+              <Route
+                path="/inventory"
+                element={
+                  <RequireAccess perm="inventory.read">
+                    <InventoryPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+
+            <Route element={<RequireModule module="inventory.movements" />}>
+              <Route
+                path="/inventory/movements"
+                element={
+                  <RequireAccess perm="inventory_movements.read">
+                    <InventoryMovementsPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
             {/* Comercial */}
-            <Route path="/comercial/orcamentos" element={<QuotesListPage />} />
-            <Route path="/comercial/orcamentos/new" element={<QuoteCreatePage />} />
-            <Route path="/comercial/orcamentos/:id" element={<QuoteDetailsPage />} />
-            <Route path="/comercial/orcamentos/:id/print" element={<QuotePrintPage />} />
+            <Route element={<RequireModule module="comercial.quotes" />}>
+              <Route
+                path="/comercial/orcamentos"
+                element={
+                  <RequireAccess perm="quotes.read">
+                    <QuotesListPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/orcamentos/new"
+                element={
+                  <RequireAccess perm="quotes.create">
+                    <QuoteCreatePage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/orcamentos/:id"
+                element={
+                  <RequireAccess perm="quotes.read">
+                    <QuoteDetailsPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/orcamentos/:id/print"
+                element={
+                  <RequireAccess perm="quotes.print">
+                    <QuotePrintPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
-            <Route path="/comercial/pedidos" element={<PedidosListPage />} />
-            <Route path="/comercial/pedidos/new" element={<PedidoDetailsPage />} />
-            <Route path="/comercial/pedidos/:id" element={<PedidoDetailsPage />} />
-            <Route path="/comercial/pedidos/:id/print" element={<PedidoPrintPage />} />
+            <Route element={<RequireModule module="comercial.orders" />}>
+              <Route
+                path="/comercial/pedidos"
+                element={
+                  <RequireAccess perm="orders.read">
+                    <PedidosListPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/pedidos/new"
+                element={
+                  <RequireAccess perm="orders.create">
+                    <PedidoDetailsPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/pedidos/:id"
+                element={
+                  <RequireAccess perm="orders.read">
+                    <PedidoDetailsPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/pedidos/:id/print"
+                element={
+                  <RequireAccess perm="orders.print">
+                    <PedidoPrintPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
-            <Route path="/comercial/vendas" element={<VendasListPage />} />
-            <Route path="/comercial/vendas/new" element={<VendaDetailsPage />} />
-            <Route path="/comercial/vendas/:id" element={<VendaDetailsPage />} />
-            <Route path="/comercial/vendas/:id/print" element={<VendaPrintPage />} />
+            <Route element={<RequireModule module="comercial.sales" />}>
+              <Route
+                path="/comercial/vendas"
+                element={
+                  <RequireAccess perm="sales.read">
+                    <VendasListPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/vendas/new"
+                element={
+                  <RequireAccess perm="sales.create">
+                    <VendaDetailsPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/vendas/:id"
+                element={
+                  <RequireAccess perm="sales.read">
+                    <VendaDetailsPage />
+                  </RequireAccess>
+                }
+              />
+              <Route
+                path="/comercial/vendas/:id/print"
+                element={
+                  <RequireAccess perm="sales.print">
+                    <VendaPrintPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
             {/* Admin */}
-            <Route path="/admin/company/modules" element={<CompanyModulesPage />} />
-            {/* <Route path="/security/roles" element={<RequireAccess perm="roles.read" module="admin.roles"> <RolesPage /></RequireAccess>}/> */}
-            <Route path="/security/roles" element={<RolesPage />} />
-            <Route path="/security/users" element={<UsersPage />} />
-            {/* 
-            
-            <Route
-              path="/security/users"
-              element={
-                <RequireAccess perm="users.read" module="admin.users">
-                  <UsersPage />
-                </RequireAccess>
-              }/>}
-            />
-            
-            */}
-            <Route path="/settings" element={<ComingSoon title="Configurações" />} />
-            <Route path="/settings/*" element={<ComingSoon title="Configurações" />} />
+            <Route element={<RequireModule module="admin.settings" />}>
+              <Route
+                path="/admin/company/modules"
+                element={
+                  <RequireAccess perm="company_modules.read">
+                    <CompanyModulesPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+     
+            <Route element={<RequireModule module="admin.roles" />}>
+              <Route
+                path="/security/roles"
+                element={
+                  <RequireAccess perm="roles.read" >
+                    <RolesPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
-            <Route path="/security" element={<ComingSoon title="Segurança" />} />
-            <Route path="/security/*" element={<ComingSoon title="Segurança" />} />
+            <Route element={<RequireModule module="admin.users" />}>
+              <Route
+                path="/security/users"
+                element={
+                  <RequireAccess perm="users.read" >
+                    <UsersPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
 
-            <Route path="/copilot" element={<ComingSoon title="Copilot" />} />
-            <Route path="/copilot/*" element={<ComingSoon title="Copilot" />} />
+            <Route element={<RequireModule module="admin.settings" />}>
+              <Route
+                path="/settings"
+                element={<ComingSoon title="Configurações" />}
+              />
+              <Route
+                path="/settings/*"
+                element={<ComingSoon title="Configurações" />}
+              />
+              <Route
+                path="/security"
+                element={<ComingSoon title="Segurança" />}
+              />
+              <Route
+                path="/security/*"
+                element={<ComingSoon title="Segurança" />}
+              />
 
-            <Route path="/finance" element={<ComingSoon title="Financeiro" />} />
-            <Route path="/finance/*" element={<ComingSoon title="Financeiro" />} />
+              <Route
+                path="/copilot"
+                element={<ComingSoon title="Copilot" />}
+              />
+              <Route
+                path="/copilot/*"
+                element={<ComingSoon title="Copilot" />}
+              />
 
-            <Route path="/fiscal" element={<ComingSoon title="Fiscal" />} />
-            <Route path="/fiscal/*" element={<ComingSoon title="Fiscal" />} />
+              <Route
+                path="/finance"
+                element={<ComingSoon title="Financeiro" />}
+              />
+              <Route
+                path="/finance/*"
+                element={<ComingSoon title="Financeiro" />}
+              />
 
-            <Route path="/reports" element={<ComingSoon title="Relatórios" />} />
-            <Route path="/reports/*" element={<ComingSoon title="Relatórios" />} />
+              <Route
+                path="/fiscal"
+                element={<ComingSoon title="Fiscal" />}
+              />
+              <Route
+                path="/fiscal/*"
+                element={<ComingSoon title="Fiscal" />}
+              />
+
+              <Route
+                path="/reports"
+                element={<ComingSoon title="Relatórios" />}
+              />
+              <Route
+                path="/reports/*"
+                element={<ComingSoon title="Relatórios" />}
+              />
+            </Route>
           </Route>
         </Route>
 

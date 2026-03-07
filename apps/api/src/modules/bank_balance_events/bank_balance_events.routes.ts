@@ -1,23 +1,31 @@
 import type { FastifyInstance } from "fastify";
 import * as controller from "./bank_balance_events.controller";
 import { requireAuth, requirePermission } from "../../config/prehandlers";
+import { requireModule } from "../../config/requireModule";
+
 
 export async function bankBalanceEventsRoutes(app: FastifyInstance) {
-  app.get(
-    "/bank-balance-events",
-    { preHandler: [requireAuth, requirePermission("reconciliation.read")] },
-    controller.list
-  );
+  app.register(
+    async function (app) {
+      app.addHook("preHandler", requireModule("finance.reconciliation"));
+      app.get(
+        "/",
+        { preHandler: [requireAuth, requirePermission("reconciliation.read")] },
+        controller.list
+      );
 
-  app.post(
-    "/bank-balance-events",
-    { preHandler: [requireAuth, requirePermission("reconciliation.update")] },
-    controller.create
-  );
+      app.post(
+        "/",
+        { preHandler: [requireAuth, requirePermission("reconciliation.update")] },
+        controller.create
+      );
 
-  app.delete(
-    "/bank-balance-events/:id",
-    { preHandler: [requireAuth, requirePermission("reconciliation.update")] },
-    controller.remove
+      app.delete(
+        "/:id",
+        { preHandler: [requireAuth, requirePermission("reconciliation.update")] },
+        controller.remove
+      );
+    },
+    { prefix: "/bank-balance-events" }
   );
 }
