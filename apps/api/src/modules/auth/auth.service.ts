@@ -1,32 +1,40 @@
+// apps/api/src/modules/auth/auth.service.ts
 import bcrypt from "bcrypt";
 import jwt, { type Secret, type SignOptions } from "jsonwebtoken";
 import { env } from "../../config/env";
 import { getPool } from "../../config/db";
 import type { LoginInput, PreLoginInput } from "./auth.schema";
-import { getUserRoleCodes } from "./auth.repository";
+import {
+  getUserRoleCodes,
+  getUserPermissions,
+} from "./auth.repository";
 
 type CompanyLite = { id: number; name: string };
 
 export async function listUserCompanies(userId: number): Promise<CompanyLite[]> {
   const pool = await getPool();
 
-  const res = await pool.request()
-    .input("userId", userId)
-    .query(`
-      SELECT DISTINCT c.id, c.name
-      FROM dbo.user_companies uc
-      JOIN dbo.companies c ON c.id = uc.company_id
-      JOIN dbo.users u ON u.id = uc.user_id
-      WHERE uc.user_id = @userId
-        AND uc.active = 1
-        AND u.active = 1
-      ORDER BY c.name
-    `);
+  const res = await pool.request().input("userId", userId).query(`
+    SELECT DISTINCT c.id, c.name
+    FROM dbo.user_companies uc
+    JOIN dbo.companies c ON c.id = uc.company_id
+    JOIN dbo.users u ON u.id = uc.user_id
+    WHERE uc.user_id = @userId
+      AND uc.active = 1
+      AND u.active = 1
+    ORDER BY c.name
+  `);
 
-  return (res.recordset ?? []).map((r: any) => ({ id: Number(r.id), name: String(r.name) }));
+  return (res.recordset ?? []).map((r: any) => ({
+    id: Number(r.id),
+    name: String(r.name),
+  }));
 }
 
-export async function switchCompany(userId: number, companyId: number): Promise<{ token: string } | null> {
+export async function switchCompany(
+  userId: number,
+  companyId: number
+): Promise<{ token: string } | null> {
   const pool = await getPool();
 
   const res = await pool
@@ -50,17 +58,19 @@ export async function switchCompany(userId: number, companyId: number): Promise<
   const row = res.recordset?.[0];
   if (!row) return null;
 
+  const roles = await getUserRoleCodes(companyId, userId);
+  const rolesFinal = roles.length ? roles : [String(row.role_code ?? "user")];
+  const primaryRole = rolesFinal.includes("admin") ? "admin" : rolesFinal[0];
+
   const secret: Secret = env.JWT_SECRET;
   const options: SignOptions = { expiresIn: env.JWT_EXPIRES_IN };
-
-  const role = String(row.role);
 
   const token = jwt.sign(
     {
       sub: String(row.id),
       companyId: Number(row.company_id),
-      role,           // mantém compat
-      roles: [role],  // ✅ ajuda seu req.auth.roles (se o verifyAuth suportar)
+      role: primaryRole,
+      roles: rolesFinal,
     },
     secret,
     options
@@ -77,7 +87,10 @@ type DbUserIdentity = {
   active: boolean;
 };
 
-type DbCompany = { id: number; name: string };
+type DbCompany = {
+  id: number;
+  name: string;
+};
 
 type DbUserCompanyLink = {
   role: string;
@@ -87,10 +100,8 @@ type DbUserCompanyLink = {
 export async function prelogin(input: PreLoginInput) {
   const pool = await getPool();
 
-  // 1) Identidade única por email
   const userRes = await pool.request().input("email", input.email).query(`
-    SELECT TOP 1
-      id, name, email, password_hash, active
+    SELECT TOP 1 id, name, email, password_hash, active
     FROM dbo.users
     WHERE email = @email
   `);
@@ -98,11 +109,9 @@ export async function prelogin(input: PreLoginInput) {
   const user = userRes.recordset[0] as DbUserIdentity | undefined;
   if (!user || !user.active) return null;
 
-  // 2) Valida senha UMA vez
   const ok = await bcrypt.compare(input.password, user.password_hash);
   if (!ok) return null;
 
-  // 3) Lista SOMENTE as empresas onde o usuário tem vínculo ativo
   const compRes = await pool.request().input("user_id", user.id).query(`
     SELECT c.id, c.name
     FROM dbo.user_companies uc
@@ -115,7 +124,6 @@ export async function prelogin(input: PreLoginInput) {
   const companies = (compRes.recordset as DbCompany[]) ?? [];
   if (companies.length === 0) return null;
 
-  // 4) loginTicket temporário
   const secret: Secret = env.JWT_SECRET;
   const options: SignOptions = { expiresIn: "3m" };
 
@@ -123,22 +131,18 @@ export async function prelogin(input: PreLoginInput) {
     {
       userId: user.id,
       companies: companies.map((c) => c.id),
-      email: user.email, // opcional (ajuda debug)
+      email: user.email,
     },
     secret,
     options
   );
 
-  return {
-    loginTicket,
-    companies,
-  };
+  return { loginTicket, companies };
 }
 
 export async function login(input: LoginInput) {
   const secret: Secret = env.JWT_SECRET;
 
-  // 1) valida ticket
   let decoded: any;
   try {
     decoded = jwt.verify(input.loginTicket, secret);
@@ -151,21 +155,21 @@ export async function login(input: LoginInput) {
 
   if (!Number.isFinite(userId) || userId <= 0) return null;
   if (!Array.isArray(allowedCompanies)) return null;
-
-  // 2) garante que a empresa escolhida está no ticket
   if (!allowedCompanies.includes(input.companyId)) return null;
 
   const pool = await getPool();
 
-  // 3) Confirma vínculo ativo + pega role POR EMPRESA (papéis diferentes)
   const linkRes = await pool
     .request()
     .input("user_id", userId)
     .input("company_id", input.companyId)
     .query(`
-      SELECT TOP 1 role_code AS role, active
+      SELECT TOP 1
+        role_code AS role,
+        active
       FROM dbo.user_companies
-      WHERE user_id = @user_id AND company_id = @company_id
+      WHERE user_id = @user_id
+        AND company_id = @company_id
     `);
 
   const link = linkRes.recordset[0] as DbUserCompanyLink | undefined;
@@ -173,29 +177,26 @@ export async function login(input: LoginInput) {
 
   const roles = await getUserRoleCodes(input.companyId, userId);
   const rolesFinal = roles.length ? roles : ["user"];
-
-  // role primário só pra compatibilidade (opcional)
   const primaryRole = rolesFinal.includes("admin") ? "admin" : rolesFinal[0];
 
-  // 4) Busca identidade do user (nome/email/ativo)
   const userRes = await pool.request().input("user_id", userId).query(`
     SELECT TOP 1 id, name, email, active
     FROM dbo.users
     WHERE id = @user_id
   `);
 
-  const user = userRes.recordset[0] as { id: number; name: string; email: string; active: boolean } | undefined;
-  if (!user || !user.active) return null;
+  const user = userRes.recordset[0] as
+    | { id: number; name: string; email: string; active: boolean }
+    | undefined;
 
-  // 5) emite o JWT final (compatível com o verifyAuth atual)
-  const options: SignOptions = { expiresIn: env.JWT_EXPIRES_IN };
+  if (!user || !user.active) return null;
 
   const token = jwt.sign(
     {
       sub: String(user.id),
       companyId: input.companyId,
-      roles: rolesFinal,     // ✅ multi-role real
-      role: primaryRole      // ✅ compat legado (pode manter por enquanto)
+      roles: rolesFinal,
+      role: primaryRole,
     },
     secret,
     { expiresIn: env.JWT_EXPIRES_IN }
@@ -208,19 +209,15 @@ export async function login(input: LoginInput) {
       companyId: input.companyId,
       name: user.name,
       email: user.email,
-      role: link.role,
+      role: primaryRole,
+      roles: rolesFinal,
     },
   };
 }
 
-/**
- * Mantive seu getMe do jeito que está, mas removi dependência de users.role/company_id.
- * Se você quiser, depois eu ajusto para também devolver role do vínculo.
- */
 export async function getMe(userId: number, companyId: number) {
   const pool = await getPool();
 
-  // 1️⃣ User (identidade)
   const userRes = await pool
     .request()
     .input("user_id", userId)
@@ -231,17 +228,40 @@ export async function getMe(userId: number, companyId: number) {
     `);
 
   const user = userRes.recordset[0];
+  if (!user || !user.active) return null;
 
-  // 2️⃣ Company
+  const linkRes = await pool
+    .request()
+    .input("user_id", userId)
+    .input("company_id", companyId)
+    .query(`
+      SELECT TOP 1
+        uc.company_id,
+        uc.role_code,
+        uc.active
+      FROM dbo.user_companies uc
+      WHERE uc.user_id = @user_id
+        AND uc.company_id = @company_id
+    `);
+
+  const link = linkRes.recordset[0];
+  if (!link || !link.active) return null;
+
   const companyRes = await pool
     .request()
     .input("company_id", companyId)
     .query(`
-      SELECT id, name
-      FROM dbo.companies
-      WHERE id = @company_id
+      SELECT
+        c.id,
+        c.name,
+        b.logo_base64,
+        b.logo_mime
+      FROM dbo.companies c
+      LEFT JOIN dbo.branding b
+        ON b.company_id = c.id
+      WHERE c.id = @company_id
     `);
-
+    
   const company = companyRes.recordset[0];
 
   // 3️⃣ Modules
@@ -249,18 +269,42 @@ export async function getMe(userId: number, companyId: number) {
     .request()
     .input("company_id", companyId)
     .query(`
-      SELECT module_key
-      FROM dbo.company_modules
-      WHERE company_id = @company_id
-        AND enabled = 1
+      SELECT mc.module_key
+      FROM dbo.company_modules cm
+      INNER JOIN dbo.modules_catalog mc
+        ON mc.module_key = cm.module_key
+       AND mc.active = 1
+      WHERE cm.company_id = @company_id
+        AND cm.enabled = 1
+      ORDER BY mc.sort_order, mc.module_key
     `);
 
-  const modules = modulesRes.recordset.map((r: any) => r.module_key);
+  const modules = modulesRes.recordset.map((r: any) => String(r.module_key));
+
+  const roles = await getUserRoleCodes(companyId, userId);
+  const rolesFinal = roles.length ? roles : [String(link.role_code ?? "user")];
+
+  const permissions = await getUserPermissions(companyId, userId);
 
   return {
-    user,
-    company,
+    user: {
+      id: Number(user.id),
+      companyId,
+      name: String(user.name),
+      email: String(user.email),
+      role: rolesFinal.includes("admin") ? "admin" : rolesFinal[0],
+      roles: rolesFinal,
+    },
+    company: company
+      ? {
+          id: Number(company.id),
+          name: String(company.name),
+          logo_base64: company.logo_base64 ?? null,
+          logo_mime: company.logo_mime ?? null,
+        }
+      : null,
     modules,
-    permissions: [], // próxima etapa (você já está pegando via /auth/me com repository)
+    permissions,
+    license: null,
   };
 }

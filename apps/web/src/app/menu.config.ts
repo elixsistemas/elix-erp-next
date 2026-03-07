@@ -22,7 +22,6 @@ export const MENU_CONFIG: MenuItem[] = [
     key: "commercial",
     label: "Comercial",
     path: "/comercial",
-    module: "commercial",
     children: [
       { key: "quotes", label: "Orçamentos", path: "/comercial/orcamentos", perm: "quotes.read" },
       { key: "orders", label: "Pedidos", path: "/comercial/pedidos", perm: "orders.read" },
@@ -32,20 +31,18 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  // --- Estoque (WMS-light no começo, evolui depois) ---
+  // --- Estoque ---
   {
     key: "inventory",
     label: "Estoque",
     path: "/inventory",
-    module: "inventory",
     children: [
       { key: "inventory_stock", label: "Saldo atual", path: "/inventory", perm: "inventory.read" },
       { key: "inventory_movs", label: "Movimentações", path: "/inventory/movements", perm: "inventory_movements.read" },
       { key: "inventory_counts", label: "Inventário", path: "/inventory/counts", perm: "inventory_counts.read" },
       { key: "inventory_locations", label: "Locais/Depósitos", path: "/inventory/locations", perm: "inventory_locations.read" },
 
-      // Atalho proposital: o usuário de estoque encontra "Produtos" aqui.
-      // Fonte da verdade continua em Cadastros.
+      // Atalho proposital para o usuário de estoque
       { key: "inventory_products_shortcut", label: "Produtos (atalho)", path: "/cadastros/produtos", perm: "products.read" },
     ],
   },
@@ -55,7 +52,6 @@ export const MENU_CONFIG: MenuItem[] = [
     key: "finance",
     label: "Financeiro",
     path: "/finance",
-    module: "finance",
     children: [
       { key: "receivables", label: "Contas a receber", path: "/finance/receivables", perm: "receivables.read" },
       { key: "payables", label: "Contas a pagar", path: "/finance/payables", perm: "payables.read" },
@@ -65,16 +61,15 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  // --- Fiscal (motor determinístico + docs) ---
+  // --- Fiscal ---
   {
     key: "fiscal",
     label: "Fiscal",
     path: "/fiscal",
-    module: "fiscal",
     children: [
       { key: "fiscal_docs", label: "Documentos", path: "/fiscal/documents", perm: "fiscal_docs.read" },
 
-      // Deixa visível só quando o módulo existir.
+      // estes dois já têm módulo próprio
       { key: "nfe", label: "NF-e", path: "/fiscal/nfe", module: "nfe", perm: "nfe.read" },
       { key: "nfse", label: "NFS-e", path: "/fiscal/nfse", module: "nfse", perm: "nfse.read" },
 
@@ -83,12 +78,11 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  // --- Cadastros (master data) ---
+  // --- Cadastros ---
   {
     key: "registry",
     label: "Cadastros",
     path: "/cadastros",
-    module: "registry",
     children: [
       { key: "companies", label: "Empresas", path: "/cadastros/empresa", perm: "companies.read" },
       { key: "customers", label: "Clientes", path: "/cadastros/clientes", perm: "customers.read" },
@@ -96,7 +90,7 @@ export const MENU_CONFIG: MenuItem[] = [
       { key: "products", label: "Produtos", path: "/cadastros/produtos", perm: "products.read" },
       { key: "services", label: "Serviços", path: "/cadastros/servicos", perm: "services.read" },
 
-      // Base fiscal é master data fiscal (CFOP/NCM/CEST/CST etc.)
+      // Base fiscal depende do módulo fiscal
       { key: "fiscal_registry", label: "Base Fiscal", path: "/cadastros/fiscal", module: "fiscal", perm: "fiscal_cfop.read" },
 
       { key: "bank_accounts", label: "Contas Bancárias", path: "/cadastros/contas-bancarias", perm: "bank_accounts.read" },
@@ -105,12 +99,11 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  // --- Relatórios / BI (começa simples, vira gigante) ---
+  // --- Relatórios ---
   {
     key: "reports",
     label: "Relatórios",
     path: "/reports",
-    module: "reports",
     children: [
       { key: "reports_sales", label: "Vendas", path: "/reports/sales", perm: "reports_sales.read" },
       { key: "reports_finance", label: "Financeiro", path: "/reports/finance", perm: "reports_finance.read" },
@@ -119,12 +112,11 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  // --- Configurações (empresa/sistema/integrações) ---
+  // --- Configurações ---
   {
     key: "settings",
     label: "Configurações",
     path: "/settings",
-    module: "settings",
     children: [
       { key: "company_profile", label: "Empresa", path: "/settings/company", perm: "company.read" },
       { key: "branding", label: "Identidade visual", path: "/settings/branding", perm: "branding.write" },
@@ -133,25 +125,30 @@ export const MENU_CONFIG: MenuItem[] = [
     ],
   },
 
-  // --- Segurança (governança real) ---
+  // --- Segurança ---
   {
     key: "security",
     label: "Segurança",
     path: "/security",
-    module: "security",
     children: [
+      { key: "admin_company", label: "Empresa", path: "/admin/company", perm: "companies.read" },
+      { key: "admin_modules", label: "Módulos", path: "/admin/company/modules", perm: "company_modules.read" },
+      { key: "admin_license", label: "Licença", path: "/admin/company/license", perm: "companies.read" },
+
       { key: "users", label: "Usuários", path: "/security/users", perm: "users.read" },
       { key: "roles", label: "Perfis & Permissões", path: "/security/roles", perm: "roles.read" },
       { key: "audit", label: "Auditoria", path: "/security/audit", perm: "audit.read" },
+
+      { key: "admin_branding", label: "Identidade visual", path: "/admin/system/branding", perm: "branding.read" },
+      { key: "admin_integrations", label: "Integrações", path: "/admin/system/integrations", perm: "company_modules.read" },
     ],
   },
 
-  // --- Copilot (futurista, mas controlado por módulo) ---
+  // --- Copilot ---
   {
     key: "copilot",
     label: "Copilot",
     path: "/copilot",
-    module: "copilot",
     children: [
       { key: "copilot_fiscal", label: "Fiscal Copilot", path: "/copilot/fiscal", perm: "copilot_fiscal.use" },
       { key: "copilot_products", label: "Sugestões p/ Produtos", path: "/copilot/products", perm: "copilot_products.use" },

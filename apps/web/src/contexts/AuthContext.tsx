@@ -29,6 +29,17 @@ type License = {
   readOnly: boolean;
 } | null;
 
+// Tipagem esperada da resposta do endpoint /auth/me
+type MeResponse = {
+  user?: User | null;
+  company?: Company | null;
+  modules?: string[] | null;
+  permissions?: string[] | null;
+  perms?: string[] | null; // API pode usar `perms`
+  license?: License | null;
+  [key: string]: any;
+};
+
 type AuthContextType = {
   token: string | null;
   user: User | null;
@@ -68,7 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function initialize(jwt: string) {
     setIsLoading(true);
     try {
-      const me = await api("/auth/me", {
+      const me = await api<MeResponse>("/auth/me", {
         auth: false,
         headers: { Authorization: `Bearer ${jwt}` },
       });

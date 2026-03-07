@@ -34,6 +34,8 @@ import Dashboard from "@/pages/dashboard/DashboardPage";
 import AppShell from "@/components/layout/AppShell";
 
 import { RequireAccess } from "@/components/auth/RequireAccess";
+import ComingSoon from "@/pages/ComingSoon";
+import CompanyModulesPage from "@/pages/admin/CompanyModulesPage";
 
 import { Toaster } from "sonner";
 
@@ -110,22 +112,39 @@ function AppBoot() {
             <Route path="/comercial/vendas/:id/print" element={<VendaPrintPage />} />
 
             {/* Admin */}
+            <Route path="/admin/company/modules" element={<CompanyModulesPage />} />
+            {/* <Route path="/security/roles" element={<RequireAccess perm="roles.read" module="admin.roles"> <RolesPage /></RequireAccess>}/> */}
+            <Route path="/security/roles" element={<RolesPage />} />
+            <Route path="/security/users" element={<UsersPage />} />
+            {/* 
+            
             <Route
-              path="/admin/roles"
-              element={
-                <RequireAccess perm="roles.read" module="admin.roles">
-                  <RolesPage />
-                </RequireAccess>
-              }
-            />
-            <Route
-              path="/admin/users"
+              path="/security/users"
               element={
                 <RequireAccess perm="users.read" module="admin.users">
                   <UsersPage />
                 </RequireAccess>
-              }
+              }/>}
             />
+            
+            */}
+            <Route path="/settings" element={<ComingSoon title="Configurações" />} />
+            <Route path="/settings/*" element={<ComingSoon title="Configurações" />} />
+
+            <Route path="/security" element={<ComingSoon title="Segurança" />} />
+            <Route path="/security/*" element={<ComingSoon title="Segurança" />} />
+
+            <Route path="/copilot" element={<ComingSoon title="Copilot" />} />
+            <Route path="/copilot/*" element={<ComingSoon title="Copilot" />} />
+
+            <Route path="/finance" element={<ComingSoon title="Financeiro" />} />
+            <Route path="/finance/*" element={<ComingSoon title="Financeiro" />} />
+
+            <Route path="/fiscal" element={<ComingSoon title="Fiscal" />} />
+            <Route path="/fiscal/*" element={<ComingSoon title="Fiscal" />} />
+
+            <Route path="/reports" element={<ComingSoon title="Relatórios" />} />
+            <Route path="/reports/*" element={<ComingSoon title="Relatórios" />} />
           </Route>
         </Route>
 
