@@ -50,7 +50,7 @@ export const Api = {
     update: (id: number, data: any) =>
       api(`/roles/${id}`, { method: "PATCH", body: data }),
     remove: (id: number) => api(`/roles/${id}`, { method: "DELETE" }),
-    permsCatalog: () => api("/permissions"),
+    permsCatalog: () => api("/roles/permissions"),
     granted: (id: number) => api(`/roles/${id}/permissions`),
     grant: (id: number, permissionCodes: string[]) =>
       api(`/roles/${id}/permissions`, { method: "PUT", body: { permissionCodes } }),

@@ -40,6 +40,13 @@ import CompanyModulesPage from "@/pages/admin/CompanyModulesPage";
 
 import { Toaster } from "sonner";
 
+function RootRedirect() {
+  const { token, isLoading } = useAuth();
+
+  if (isLoading) return null;
+  return <Navigate to={token ? "/dashboard" : "/login"} replace />;
+}
+
 function AppBoot() {
   return (
     <BrowserRouter>
@@ -49,7 +56,12 @@ function AppBoot() {
       <Routes>
         {/* Públicas */}
         <Route path="/login" element={<Login />} />
-        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route
+          path="/"
+          element={
+            <RootRedirect />
+          }
+        />
 
         {/* Protegidas */}
         <Route element={<ProtectedLayout />}>
@@ -100,9 +112,9 @@ function AppBoot() {
             </Route>
             <Route element={<RequireModule module="fiscal.rules" />}>
               <Route
-                path="/cadastros/fiscal"
+                path="/fiscal/tax-profiles"
                 element={
-                  <RequireAccess perm="fiscal.rules">
+                  <RequireAccess perm="tax_rules.read">
                     <FiscalPage />
                   </RequireAccess>
                 }
@@ -133,7 +145,7 @@ function AppBoot() {
             </Route>
 
             {/* Comercial */}
-            <Route element={<RequireModule module="comercial.quotes" />}>
+            <Route element={<RequireModule module="commercial.quotes" />}>
               <Route
                 path="/comercial/orcamentos"
                 element={
@@ -168,7 +180,7 @@ function AppBoot() {
               />
             </Route>
 
-            <Route element={<RequireModule module="comercial.orders" />}>
+            <Route element={<RequireModule module="commercial.orders" />}>
               <Route
                 path="/comercial/pedidos"
                 element={
@@ -203,7 +215,7 @@ function AppBoot() {
               />
             </Route>
 
-            <Route element={<RequireModule module="comercial.sales" />}>
+            <Route element={<RequireModule module="commercial.sales" />}>
               <Route
                 path="/comercial/vendas"
                 element={
@@ -241,7 +253,7 @@ function AppBoot() {
             {/* Admin */}
             <Route element={<RequireModule module="admin.settings" />}>
               <Route
-                path="/admin/company/modules"
+                path="/settings/modules"
                 element={
                   <RequireAccess perm="company_modules.read">
                     <CompanyModulesPage />
@@ -330,6 +342,14 @@ function AppBoot() {
         </Route>
 
         {/* fallback */}
+
+        <Route element={<ProtectedLayout />}>
+          <Route element={<AppShell />}>
+            ...
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Route>
+        </Route>
+
         <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </BrowserRouter>

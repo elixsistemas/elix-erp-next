@@ -278,39 +278,43 @@ function PermissionsMatrix({
 
           return (
             <AccordionItem key={mod} value={mod} className="border rounded-lg px-3">
-              <AccordionTrigger className="py-3">
-                <div className="flex items-center gap-3 w-full">
-                  <div className="font-medium capitalize">{mod}</div>
-                  <Badge variant="secondary">
-                    {ms.on}/{ms.total}
-                  </Badge>
-                  <div className="ml-auto flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        toggleMany(ms.allCodes, true);
-                      }}
-                    >
-                      Marcar tudo
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        toggleMany(ms.allCodes, false);
-                      }}
-                      disabled={!anyOn}
-                    >
-                      Limpar
-                    </Button>
+              <div className="flex items-center gap-3 py-3">
+                <AccordionTrigger className="flex-1 py-0 hover:no-underline">
+                  <div className="flex items-center gap-3 text-left">
+                    <div className="font-medium capitalize">{mod}</div>
+                    <Badge variant="secondary">
+                      {ms.on}/{ms.total}
+                    </Badge>
                   </div>
+                </AccordionTrigger>
+
+                <div className="ml-auto flex items-center gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMany(ms.allCodes, true);
+                    }}
+                  >
+                    Marcar tudo
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleMany(ms.allCodes, false);
+                    }}
+                    disabled={!anyOn}
+                  >
+                    Limpar
+                  </Button>
                 </div>
-              </AccordionTrigger>
+              </div>
 
               <AccordionContent className="pb-4">
                 <div className="space-y-4">
@@ -351,7 +355,7 @@ function PermissionsMatrix({
                           <div className="min-w-[520px] grid gap-2">
                             {actions.map((row) => {
                               const cols = (Object.keys(row.codes) as (keyof typeof row.codes)[])
-                                .filter((a) => Boolean(row.codes[a])); // só ações existentes
+                                .filter((a) => Boolean(row.codes[a]));
 
                               return (
                                 <React.Fragment key={row.key}>
@@ -392,7 +396,6 @@ function PermissionsMatrix({
                                 </React.Fragment>
                               );
                             })}
-
                           </div>
                         </div>
                       </div>
@@ -404,7 +407,7 @@ function PermissionsMatrix({
                   )}
                 </div>
               </AccordionContent>
-            </AccordionItem>
+            </AccordionItem> 
           );
         })}
       </Accordion>
