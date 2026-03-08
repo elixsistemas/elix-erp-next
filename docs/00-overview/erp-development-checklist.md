@@ -118,11 +118,20 @@ Evoluções:
 
 Muito importante para logística.
 
-* [x] tabela transportadoras
+* [x] tabela carriers
 * [x] backend
-* [-] frontend em andamento merece melhor atenção
+* [x] frontend
 * [ ] vínculo com pedidos
 * [ ] vínculo com NF
+
+## Veiculos
+
+Muito importante para logística.
+
+* [x] tabela carrier_vehicles
+* [x] backend
+* [x] frontend
+* [x] vínculo com Transportadoras
 
 ---
 
@@ -480,15 +489,15 @@ Cadastros financeiros básicos concluídos:
 
 Sugestão arquitetural:
 
-1️⃣ Transportadoras
+1️⃣ Plano de contas
 
-2️⃣ Plano de contas
+2️⃣ Centros de custo
 
-3️⃣ Centros de custo
+3️⃣ Categorias de produtos
 
-4️⃣ Categorias de produtos
+4️⃣ Serviços
 
-5️⃣ Serviços
+5️⃣ 
 
 Depois disso o ERP entra em **nível estrutural equivalente a ERPs maduros**.
 
