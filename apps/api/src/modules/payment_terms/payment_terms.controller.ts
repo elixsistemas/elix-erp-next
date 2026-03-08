@@ -3,18 +3,14 @@ import { IdParamSchema } from "../../config/params";
 import {
   ListPaymentTermsQuerySchema,
   PaymentTermCreateSchema,
-  PaymentTermUpdateSchema
+  PaymentTermUpdateSchema,
 } from "./payment_terms.schema";
 import * as service from "./payment_terms.service";
 
 export async function list(req: FastifyRequest, rep: FastifyReply) {
   const companyId = req.auth!.companyId;
   const q = ListPaymentTermsQuerySchema.parse((req.query ?? {}) as any);
-
-  const active =
-    q.active === "1" ? true :
-    q.active === "0" ? false :
-    undefined;
+  const active = q.active === "1" ? true : q.active === "0" ? false : undefined;
 
   return rep.send(await service.list(companyId, active));
 }

@@ -20,6 +20,7 @@ import { suppliersRoutes } from "./modules/suppliers/suppliers.routes";
 import { rolesRoutes } from "./modules/roles/roles.routes";
 import { usersRoutes } from "./modules/users/users.routes";
 import { companyModulesRoutes } from "./modules/company_modules/company_modules.routes";
+import { paymentMethodsRoutes } from "./modules/payment_methods/payment_methods.routes";
 
 
 export async function routes(app: FastifyInstance) {
@@ -43,4 +44,5 @@ export async function routes(app: FastifyInstance) {
   await app.register(rolesRoutes);
   await app.register(usersRoutes);
   await app.register(companyModulesRoutes);
+  await app.register(paymentMethodsRoutes);
 }

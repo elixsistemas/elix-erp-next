@@ -1,29 +1,23 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { useBankAccounts } from "./useBankAccounts";
-import { BankAccountsToolbar } from "./components/BankAccountsToolbar";
-import { BankAccountsTable } from "./components/BankAccountsTable";
-import { BankAccountDialog } from "./components/BankAccountDialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePaymentTerms } from "./usePaymentTerms";
+import { PaymentTermsToolbar } from "./components/PaymentTermsToolbar";
+import { PaymentTermsTable } from "./components/PaymentTermsTable";
+import { PaymentTermDialog } from "./components/PaymentTermDialog";
 
-export default function BankAccountsPage() {
-  const vm = useBankAccounts();
+export default function PaymentTermsPage() {
+  const vm = usePaymentTerms();
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Contas Bancárias</CardTitle>
+        <CardTitle>Condições de pagamento</CardTitle>
         <CardDescription>
-          Cadastros → Contas Bancárias
+          Cadastros → Condições de pagamento
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <BankAccountsToolbar
+        <PaymentTermsToolbar
           q={vm.q}
           setQ={vm.setQ}
           statusFilter={vm.statusFilter}
@@ -37,18 +31,13 @@ export default function BankAccountsPage() {
           <div className="text-sm text-muted-foreground">Carregando...</div>
         ) : vm.filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            Nenhuma conta encontrada.
+            Nenhuma condição de pagamento encontrada.
           </div>
         ) : (
-          <BankAccountsTable
-            rows={vm.filtered}
-            onEdit={vm.openEdit}
-            onDeactivate={vm.deactivate}
-            onActivate={vm.activate}
-          />
+          <PaymentTermsTable rows={vm.filtered} onEdit={vm.openEdit} />
         )}
 
-        <BankAccountDialog
+        <PaymentTermDialog
           open={vm.open}
           onOpenChange={vm.setOpen}
           editing={vm.editing}

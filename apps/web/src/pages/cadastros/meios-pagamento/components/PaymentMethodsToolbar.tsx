@@ -1,6 +1,5 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -8,8 +7,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Plus, RefreshCw } from "lucide-react";
 
-export function BankAccountsToolbar(props: {
+type Props = {
   q: string;
   setQ: (v: string) => void;
   statusFilter: "1" | "0" | "all";
@@ -17,11 +17,13 @@ export function BankAccountsToolbar(props: {
   loading: boolean;
   onRefresh: () => void;
   onCreate: () => void;
-}) {
+};
+
+export function PaymentMethodsToolbar(props: Props) {
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center">
       <Input
-        placeholder="Buscar por nome, banco, agência, conta, titular ou PIX..."
+        placeholder="Buscar por nome, código, tipo ou integração..."
         value={props.q}
         onChange={(e) => props.setQ(e.target.value)}
         className="md:max-w-sm"
@@ -35,9 +37,9 @@ export function BankAccountsToolbar(props: {
           <SelectValue placeholder="Status" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="1">Ativas</SelectItem>
-          <SelectItem value="0">Inativas</SelectItem>
-          <SelectItem value="all">Todas</SelectItem>
+          <SelectItem value="1">Ativos</SelectItem>
+          <SelectItem value="0">Inativos</SelectItem>
+          <SelectItem value="all">Todos</SelectItem>
         </SelectContent>
       </Select>
 
@@ -49,7 +51,7 @@ export function BankAccountsToolbar(props: {
 
         <Button onClick={props.onCreate}>
           <Plus className="mr-2 h-4 w-4" />
-          Nova conta
+          Novo meio
         </Button>
       </div>
     </div>

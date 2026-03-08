@@ -3,12 +3,22 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { BrandingProvider } from "@/contexts/BrandingContext";
 import { GlobalUiResets } from "@/components/layout/GlobalUiResets";
 import { RequireModule } from "@/components/auth/RequireModule";
+import { RequireAccess } from "@/components/auth/RequireAccess";
+import AppShell from "@/components/layout/AppShell";
+import { Toaster } from "sonner";
 
-import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPage";
-import CustomersPage from "@/pages/cadastros/clientes/CustomersPage";
-import ProductsPage from "@/pages/cadastros/produtos/ProductsPage";
+import Login from "@/pages/Login";
+import ComingSoon from "@/pages/ComingSoon";
+import Dashboard from "@/pages/dashboard/DashboardPage";
+
 import CompanyPage from "@/pages/cadastros/empresa/CompanyPage";
+import CustomersPage from "@/pages/cadastros/clientes/CustomersPage";
 import SuppliersPage from "@/pages/cadastros/fornecedores/SuppliersPage";
+import ProductsPage from "@/pages/cadastros/produtos/ProductsPage";
+import FiscalPage from "@/pages/cadastros/fiscal/FiscalPage";
+import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPage";
+import PaymentMethodsPage from "@/pages/cadastros/meios-pagamento/PaymentMethodsPage";
+import PaymentTermsPage from "@/pages/cadastros/condicoes-pagamento/PaymentTermsPage";
 
 import InventoryPage from "@/pages/estoque/InventoryPage";
 import InventoryMovementsPage from "@/pages/estoque/InventoryMovementsPage";
@@ -25,20 +35,10 @@ import PedidoPrintPage from "@/pages/comercial/pedidos/PedidoPrintPage";
 import VendasListPage from "@/pages/comercial/vendas/VendasListPage";
 import VendaDetailsPage from "@/pages/comercial/vendas/VendaDetailsPage";
 import VendaPrintPage from "@/pages/comercial/vendas/VendaPrintPage";
-import FiscalPage from "@/pages/cadastros/fiscal/FiscalPage";
 
 import RolesPage from "@/pages/admin/RolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
-
-import Login from "@/pages/Login";
-import Dashboard from "@/pages/dashboard/DashboardPage";
-import AppShell from "@/components/layout/AppShell";
-
-import { RequireAccess } from "@/components/auth/RequireAccess";
-import ComingSoon from "@/pages/ComingSoon";
 import CompanyModulesPage from "@/pages/admin/CompanyModulesPage";
-
-import { Toaster } from "sonner";
 
 function RootRedirect() {
   const { token, isLoading } = useAuth();
@@ -69,17 +69,6 @@ function AppBoot() {
             <Route path="/dashboard" element={<Dashboard />} />
 
             {/* Cadastros */}
-            <Route element={<RequireModule module="cadastros.bank_accounts" />}>
-              <Route path="/cadastros/contas-bancarias" element={<BankAccountsPage />} />
-              <Route
-                path="/cadastros/empresa"
-                element={
-                  <RequireAccess perm="companies.read" >
-                    <CompanyPage />
-                  </RequireAccess>
-                }
-              />
-            </Route>
             <Route element={<RequireModule module="cadastros.customers" />}>
               <Route
                 path="/cadastros/clientes"
@@ -116,6 +105,40 @@ function AppBoot() {
                 element={
                   <RequireAccess perm="tax_rules.read">
                     <FiscalPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+
+            <Route element={<RequireModule module="cadastros.bank_accounts" />}>
+              <Route path="/cadastros/contas-bancarias" element={<BankAccountsPage />} />
+              <Route
+                path="/cadastros/empresa"
+                element={
+                  <RequireAccess perm="companies.read" >
+                    <CompanyPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+
+            <Route element={<RequireModule module="cadastros.payment_methods" />}>
+              <Route
+                path="/cadastros/meios-pagamento"
+                element={
+                  <RequireAccess perm="payment_methods.read">
+                    <PaymentMethodsPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+
+            <Route element={<RequireModule module="cadastros.payment_terms" />}>
+              <Route
+                path="/cadastros/condicoes"
+                element={
+                  <RequireAccess perm="payment_terms.read">
+                    <PaymentTermsPage />
                   </RequireAccess>
                 }
               />

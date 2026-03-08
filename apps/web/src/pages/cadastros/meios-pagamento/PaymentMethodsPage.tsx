@@ -1,29 +1,23 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { useBankAccounts } from "./useBankAccounts";
-import { BankAccountsToolbar } from "./components/BankAccountsToolbar";
-import { BankAccountsTable } from "./components/BankAccountsTable";
-import { BankAccountDialog } from "./components/BankAccountDialog";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePaymentMethods } from "./usePaymentMethods";
+import { PaymentMethodsToolbar } from "./components/PaymentMethodsToolbar";
+import { PaymentMethodsTable } from "./components/PaymentMethodsTable";
+import { PaymentMethodDialog } from "./components/PaymentMethodDialog";
 
-export default function BankAccountsPage() {
-  const vm = useBankAccounts();
+export default function PaymentMethodsPage() {
+  const vm = usePaymentMethods();
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Contas Bancárias</CardTitle>
+        <CardTitle>Meios de pagamento</CardTitle>
         <CardDescription>
-          Cadastros → Contas Bancárias
+          Cadastros → Meios de pagamento
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-4">
-        <BankAccountsToolbar
+        <PaymentMethodsToolbar
           q={vm.q}
           setQ={vm.setQ}
           statusFilter={vm.statusFilter}
@@ -37,10 +31,10 @@ export default function BankAccountsPage() {
           <div className="text-sm text-muted-foreground">Carregando...</div>
         ) : vm.filtered.length === 0 ? (
           <div className="text-sm text-muted-foreground">
-            Nenhuma conta encontrada.
+            Nenhum meio de pagamento encontrado.
           </div>
         ) : (
-          <BankAccountsTable
+          <PaymentMethodsTable
             rows={vm.filtered}
             onEdit={vm.openEdit}
             onDeactivate={vm.deactivate}
@@ -48,7 +42,7 @@ export default function BankAccountsPage() {
           />
         )}
 
-        <BankAccountDialog
+        <PaymentMethodDialog
           open={vm.open}
           onOpenChange={vm.setOpen}
           editing={vm.editing}
