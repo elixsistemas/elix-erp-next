@@ -491,3 +491,358 @@ Sugestão arquitetural:
 5️⃣ Serviços
 
 Depois disso o ERP entra em **nível estrutural equivalente a ERPs maduros**.
+
+---
+
+# 11. MAPA DE DEPENDÊNCIAS DO ERP
+
+Este mapa define a ordem lógica de construção para evitar retrabalho.
+
+## 11.1 Núcleo de plataforma
+
+Base para todo o restante:
+
+* Auth / sessão
+* RBAC
+* multiempresa
+* módulos / licenciamento
+* branding / configuração
+
+Sem esse bloco, o ERP não escala com segurança.
+
+---
+
+## 11.2 Cadastros mestre → dependências
+
+### Empresas
+
+Empresas é a raiz de quase tudo:
+
+* clientes
+* fornecedores
+* produtos
+* serviços
+* contas bancárias
+* perfis fiscais
+* parâmetros por empresa
+
+---
+
+### Clientes
+
+Clientes alimentam:
+
+* orçamentos
+* pedidos
+* vendas
+* contas a receber
+* documentos fiscais
+* relatórios comerciais
+
+Dependências desejáveis antes de expandir clientes:
+
+* múltiplos endereços
+* contatos
+* limite de crédito
+
+---
+
+### Fornecedores
+
+Fornecedores alimentam:
+
+* compras
+* contas a pagar
+* entrada de estoque
+* serviços tomados
+* fiscal de entrada
+
+Dependências desejáveis:
+
+* contatos
+* dados bancários
+* condições comerciais
+
+---
+
+### Transportadoras
+
+Transportadoras alimentam:
+
+* pedidos
+* expedição
+* documentos fiscais
+* frete
+
+Dependem de:
+
+* empresas
+* cadastro base de parceiros
+
+---
+
+### Produtos
+
+Produtos dependem de:
+
+* unidades
+* categorias
+* marcas
+* perfis fiscais
+* parâmetros por empresa
+
+Produtos alimentam:
+
+* estoque
+* orçamentos
+* pedidos
+* vendas
+* fiscal
+* relatórios
+
+Subcadastros diretamente ligados:
+
+* categorias
+* marcas
+* variantes
+* atributos
+* listas de preço
+
+---
+
+### Serviços
+
+Serviços alimentam:
+
+* vendas de serviço
+* NFS-e
+* faturamento
+* financeiro
+
+Dependem de decisão arquitetural:
+
+* tabela própria
+  ou
+* reutilização de `products.kind`
+
+---
+
+### Contas bancárias
+
+Contas bancárias alimentam:
+
+* recebimentos
+* pagamentos
+* conciliação
+* fluxo de caixa
+* PIX
+
+Dependem de:
+
+* empresa
+
+---
+
+### Meios de pagamento
+
+Meios de pagamento alimentam:
+
+* vendas
+* recebimentos
+* pagamentos
+* conciliação
+* PDV futuro
+
+Dependem de:
+
+* empresa
+* eventualmente contas bancárias
+
+---
+
+### Condições de pagamento
+
+Condições alimentam:
+
+* orçamentos
+* pedidos
+* vendas
+* contas a receber
+* contas a pagar
+
+Dependem de:
+
+* empresa
+
+---
+
+### Plano de contas
+
+Plano de contas alimenta:
+
+* contas a pagar
+* contas a receber
+* fluxo de caixa
+* lançamentos financeiros
+* DRE / relatórios
+
+Dependências:
+
+* empresa
+* definição de estrutura hierárquica
+
+---
+
+### Centros de custo
+
+Centros de custo alimentam:
+
+* contas a pagar
+* contas a receber
+* fluxo de caixa
+* relatórios gerenciais
+
+Dependências:
+
+* empresa
+* idealmente plano de contas
+
+---
+
+### Perfis fiscais
+
+Perfis fiscais dependem de:
+
+* base fiscal global
+* empresa
+* regime tributário
+
+Perfis fiscais alimentam:
+
+* produtos
+* serviços
+* vendas
+* compras
+* documentos fiscais
+* motor fiscal
+
+---
+
+## 11.3 Ordem lógica dos cadastros mestre
+
+### Faixa A — já consolidados ou base pronta
+
+* empresas
+* clientes
+* fornecedores
+* produtos
+* base fiscal global
+* contas bancárias
+* meios de pagamento
+* condições de pagamento
+
+### Faixa B — prioridade estrutural alta
+
+* transportadoras
+* plano de contas
+* centros de custo
+* categorias de produto
+* marcas
+* serviços
+
+### Faixa C — refinamentos de maturidade
+
+* listas de preço
+* contatos e múltiplos endereços
+* políticas comerciais
+* dados bancários de parceiros
+* variantes e atributos
+
+---
+
+## 11.4 Dependências por domínio processual
+
+### Comercial depende de:
+
+* clientes
+* produtos/serviços
+* condições de pagamento
+* meios de pagamento
+* transportadoras
+* perfis fiscais
+
+### Estoque depende de:
+
+* produtos
+* categorias
+* marcas
+* locais/depósitos
+* regras fiscais mínimas
+
+### Fiscal depende de:
+
+* base fiscal global
+* perfis fiscais
+* clientes
+* fornecedores
+* produtos/serviços
+* operações comerciais
+
+### Financeiro depende de:
+
+* contas bancárias
+* meios de pagamento
+* condições de pagamento
+* plano de contas
+* centros de custo
+* clientes/fornecedores
+* documentos de origem (venda/compra)
+
+### Compras depende de:
+
+* fornecedores
+* produtos/serviços
+* condições de pagamento
+* centros de custo
+* plano de contas
+
+---
+
+## 11.5 Ordem recomendada de construção a partir de agora
+
+### Etapa 1 — completar cadastros mestre faltantes
+
+1. Transportadoras
+2. Categorias de produto
+3. Marcas
+4. Plano de contas
+5. Centros de custo
+6. Serviços
+
+### Etapa 2 — consolidar cadastros avançados
+
+1. contatos/endereços de clientes
+2. contatos/endereços de fornecedores
+3. listas de preço
+4. políticas comerciais
+5. perfis fiscais ampliados
+
+### Etapa 3 — entrar nos módulos processuais com base sólida
+
+1. compras
+2. financeiro operacional
+3. fiscal operacional
+4. expedição/devoluções
+5. relatórios gerenciais
+
+---
+
+## 11.6 Regra prática para próximos chats
+
+Antes de iniciar um novo módulo:
+
+1. revisar este checklist
+2. verificar dependências já prontas
+3. confirmar se o módulo é cadastro mestre ou processo
+4. preferir concluir os cadastros da etapa atual antes de abrir processos dependentes
+5. ao fim do ciclo, atualizar checklist + mapa de dependências
