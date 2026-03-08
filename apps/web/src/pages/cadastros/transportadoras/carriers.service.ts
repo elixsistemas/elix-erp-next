@@ -1,10 +1,7 @@
 import { api } from "@/shared/api/client";
 import type { Carrier } from "./carriers.types";
 
-export async function listCarriers(params?: {
-  q?: string;
-  active?: "1" | "0";
-}) {
+export async function listCarriers(params?: { q?: string; active?: "1" | "0" }) {
   const qs = new URLSearchParams();
 
   if (params?.q?.trim()) qs.set("q", params.q.trim());
@@ -16,7 +13,7 @@ export async function listCarriers(params?: {
   return Array.isArray(data) ? (data as Carrier[]) : [];
 }
 
-export async function createCarrier(payload: any) {
+export async function createCarrier(payload: unknown) {
   return api("/carriers", {
     method: "POST",
     auth: true,
@@ -24,7 +21,7 @@ export async function createCarrier(payload: any) {
   });
 }
 
-export async function updateCarrier(id: number, payload: any) {
+export async function updateCarrier(id: number, payload: unknown) {
   return api(`/carriers/${id}`, {
     method: "PATCH",
     auth: true,

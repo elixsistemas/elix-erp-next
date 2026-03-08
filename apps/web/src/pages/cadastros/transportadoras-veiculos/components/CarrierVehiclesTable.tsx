@@ -1,16 +1,15 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { Carrier } from "../carriers.types";
+import type { CarrierVehicle } from "../carrierVehicles.types";
 
 type Props = {
-  rows: Carrier[];
+  rows: CarrierVehicle[];
   loading: boolean;
-  onEdit: (row: Carrier) => void;
-  onRemove: (row: Carrier) => void;
-  onOpenVehicles: (row: Carrier) => void;
+  onEdit: (row: CarrierVehicle) => void;
+  onRemove: (row: CarrierVehicle) => void;
 };
 
-export function CarriersTable(props: Props) {
+export function CarrierVehiclesTable(props: Props) {
   if (props.loading) {
     return (
       <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
@@ -22,7 +21,7 @@ export function CarriersTable(props: Props) {
   if (!props.rows.length) {
     return (
       <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-        Nenhuma transportadora encontrada.
+        Nenhum veículo encontrado.
       </div>
     );
   }
@@ -32,10 +31,11 @@ export function CarriersTable(props: Props) {
       <table className="w-full text-sm">
         <thead className="bg-muted/40">
           <tr className="text-left">
-            <th className="px-4 py-3">ID</th>
+            <th className="px-4 py-3">Placa</th>
             <th className="px-4 py-3">Transportadora</th>
-            <th className="px-4 py-3">Documento</th>
-            <th className="px-4 py-3">Contato</th>
+            <th className="px-4 py-3">Tipo / Carroceria</th>
+            <th className="px-4 py-3">Modelo</th>
+            <th className="px-4 py-3">UF</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3 text-right">Ações</th>
           </tr>
@@ -43,53 +43,43 @@ export function CarriersTable(props: Props) {
         <tbody>
           {props.rows.map((row) => (
             <tr key={row.id} className="border-t">
-              <td className="px-4 py-3">#{row.id}</td>
-
               <td className="px-4 py-3">
                 <div className="flex flex-col">
-                  <span className="font-medium">{row.legal_name}</span>
+                  <span className="font-medium">{row.plate}</span>
                   <div className="text-xs text-muted-foreground">
-                    {[row.trade_name, row.city, row.state].filter(Boolean).join(" • ") || "-"}
+                    {row.secondary_plate || "-"}
                   </div>
                 </div>
               </td>
 
               <td className="px-4 py-3">
                 <div className="flex flex-col">
-                  <span>{row.document_number || "-"}</span>
+                  <span>{row.carrier_trade_name || row.carrier_legal_name}</span>
                   <div className="text-xs text-muted-foreground">
-                    {[row.document_type, row.rntrc ? `RNTRC: ${row.rntrc}` : null]
-                      .filter(Boolean)
-                      .join(" • ")}
+                    {row.carrier_trade_name ? row.carrier_legal_name : "-"}
                   </div>
                 </div>
               </td>
 
               <td className="px-4 py-3">
-                <div className="flex flex-col">
-                  <span>{row.email || "-"}</span>
-                  <div className="text-xs text-muted-foreground">
-                    {[row.phone, row.contact_name].filter(Boolean).join(" • ") || "-"}
-                  </div>
-                </div>
+                {[row.vehicle_type, row.body_type].filter(Boolean).join(" • ") || "-"}
               </td>
+
+              <td className="px-4 py-3">{row.brand_model || "-"}</td>
+
+              <td className="px-4 py-3">{row.state || "-"}</td>
 
               <td className="px-4 py-3">
                 <Badge variant={row.active ? "default" : "secondary"}>
-                  {row.active ? "Ativa" : "Inativa"}
+                  {row.active ? "Ativo" : "Inativo"}
                 </Badge>
               </td>
 
               <td className="px-4 py-3">
                 <div className="flex items-center justify-end gap-2">
-                  <Button variant="outline" size="sm" onClick={() => props.onOpenVehicles(row)}>
-                    Veículos
-                  </Button>
-
                   <Button variant="outline" size="sm" onClick={() => props.onEdit(row)}>
                     Editar
                   </Button>
-
                   <Button variant="destructive" size="sm" onClick={() => props.onRemove(row)}>
                     Excluir
                   </Button>

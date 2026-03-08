@@ -9,10 +9,15 @@ type ListArgs = {
 type CreateArgs = {
   companyId: number;
   code?: string | null;
-  name: string;
-  legalName?: string | null;
-  document?: string | null;
+
+  legalName: string;
+  tradeName?: string | null;
+
+  documentType: "CPF" | "CNPJ";
+  documentNumber: string;
+
   stateRegistration?: string | null;
+  municipalRegistration?: string | null;
   rntrc?: string | null;
 
   email?: string | null;
@@ -21,20 +26,18 @@ type CreateArgs = {
 
   zipCode?: string | null;
   street?: string | null;
-  streetNumber?: string | null;
+  number?: string | null;
   complement?: string | null;
-  neighborhood?: string | null;
+  district?: string | null;
   city?: string | null;
   state?: string | null;
-
-  vehicleType?: string | null;
-  plate?: string | null;
 
   notes?: string | null;
   active?: boolean;
 };
 
-type UpdateArgs = CreateArgs & {
+type UpdateArgs = Partial<CreateArgs> & {
+  companyId: number;
   id: number;
 };
 
@@ -53,9 +56,9 @@ export async function listCarriers(args: ListArgs) {
     req.input("q", `%${args.q.trim()}%`);
     where.push(`
       (
-        name LIKE @q OR
         legal_name LIKE @q OR
-        document LIKE @q OR
+        trade_name LIKE @q OR
+        document_number LIKE @q OR
         email LIKE @q OR
         phone LIKE @q OR
         city LIKE @q OR
@@ -71,30 +74,30 @@ export async function listCarriers(args: ListArgs) {
       id,
       company_id,
       code,
-      name,
       legal_name,
-      document,
+      trade_name,
+      document_type,
+      document_number,
       state_registration,
+      municipal_registration,
       rntrc,
       email,
       phone,
       contact_name,
       zip_code,
       street,
-      street_number,
+      number,
       complement,
-      neighborhood,
+      district,
       city,
       state,
-      vehicle_type,
-      plate,
       notes,
       active,
       created_at,
       updated_at
     FROM dbo.carriers
     WHERE ${where.join(" AND ")}
-    ORDER BY active DESC, name ASC, id DESC
+    ORDER BY active DESC, legal_name ASC, id DESC
   `;
 
   const r = await req.query(sql);
@@ -113,23 +116,23 @@ export async function getCarrier(companyId: number, id: number) {
         id,
         company_id,
         code,
-        name,
         legal_name,
-        document,
+        trade_name,
+        document_type,
+        document_number,
         state_registration,
+        municipal_registration,
         rntrc,
         email,
         phone,
         contact_name,
         zip_code,
         street,
-        street_number,
+        number,
         complement,
-        neighborhood,
+        district,
         city,
         state,
-        vehicle_type,
-        plate,
         notes,
         active,
         created_at,
@@ -148,46 +151,46 @@ export async function createCarrier(args: CreateArgs) {
     .request()
     .input("company_id", args.companyId)
     .input("code", args.code ?? null)
-    .input("name", args.name)
-    .input("legal_name", args.legalName ?? null)
-    .input("document", args.document ?? null)
+    .input("legal_name", args.legalName)
+    .input("trade_name", args.tradeName ?? null)
+    .input("document_type", args.documentType)
+    .input("document_number", args.documentNumber)
     .input("state_registration", args.stateRegistration ?? null)
+    .input("municipal_registration", args.municipalRegistration ?? null)
     .input("rntrc", args.rntrc ?? null)
     .input("email", args.email ?? null)
     .input("phone", args.phone ?? null)
     .input("contact_name", args.contactName ?? null)
     .input("zip_code", args.zipCode ?? null)
     .input("street", args.street ?? null)
-    .input("street_number", args.streetNumber ?? null)
+    .input("number", args.number ?? null)
     .input("complement", args.complement ?? null)
-    .input("neighborhood", args.neighborhood ?? null)
+    .input("district", args.district ?? null)
     .input("city", args.city ?? null)
     .input("state", args.state ?? null)
-    .input("vehicle_type", args.vehicleType ?? null)
-    .input("plate", args.plate ?? null)
     .input("notes", args.notes ?? null)
     .input("active", args.active ?? true ? 1 : 0)
     .query(`
       INSERT INTO dbo.carriers (
         company_id,
         code,
-        name,
         legal_name,
-        document,
+        trade_name,
+        document_type,
+        document_number,
         state_registration,
+        municipal_registration,
         rntrc,
         email,
         phone,
         contact_name,
         zip_code,
         street,
-        street_number,
+        number,
         complement,
-        neighborhood,
+        district,
         city,
         state,
-        vehicle_type,
-        plate,
         notes,
         active
       )
@@ -195,23 +198,23 @@ export async function createCarrier(args: CreateArgs) {
       VALUES (
         @company_id,
         @code,
-        @name,
         @legal_name,
-        @document,
+        @trade_name,
+        @document_type,
+        @document_number,
         @state_registration,
+        @municipal_registration,
         @rntrc,
         @email,
         @phone,
         @contact_name,
         @zip_code,
         @street,
-        @street_number,
+        @number,
         @complement,
-        @neighborhood,
+        @district,
         @city,
         @state,
-        @vehicle_type,
-        @plate,
         @notes,
         @active
       )
@@ -227,48 +230,48 @@ export async function updateCarrier(args: UpdateArgs) {
     .request()
     .input("company_id", args.companyId)
     .input("id", args.id)
-    .input("code", args.code ?? null)
-    .input("name", args.name ?? null)
-    .input("legal_name", args.legalName ?? null)
-    .input("document", args.document ?? null)
-    .input("state_registration", args.stateRegistration ?? null)
-    .input("rntrc", args.rntrc ?? null)
-    .input("email", args.email ?? null)
-    .input("phone", args.phone ?? null)
-    .input("contact_name", args.contactName ?? null)
-    .input("zip_code", args.zipCode ?? null)
-    .input("street", args.street ?? null)
-    .input("street_number", args.streetNumber ?? null)
-    .input("complement", args.complement ?? null)
-    .input("neighborhood", args.neighborhood ?? null)
-    .input("city", args.city ?? null)
-    .input("state", args.state ?? null)
-    .input("vehicle_type", args.vehicleType ?? null)
-    .input("plate", args.plate ?? null)
-    .input("notes", args.notes ?? null)
-    .input("active", typeof args.active === "boolean" ? (args.active ? 1 : 0) : null)
+    .input("code", args.code)
+    .input("legal_name", args.legalName)
+    .input("trade_name", args.tradeName)
+    .input("document_type", args.documentType)
+    .input("document_number", args.documentNumber)
+    .input("state_registration", args.stateRegistration)
+    .input("municipal_registration", args.municipalRegistration)
+    .input("rntrc", args.rntrc)
+    .input("email", args.email)
+    .input("phone", args.phone)
+    .input("contact_name", args.contactName)
+    .input("zip_code", args.zipCode)
+    .input("street", args.street)
+    .input("number", args.number)
+    .input("complement", args.complement)
+    .input("district", args.district)
+    .input("city", args.city)
+    .input("state", args.state)
+    .input("notes", args.notes)
+    .input("active", typeof args.active === "boolean" ? (args.active ? 1 : 0) : undefined)
     .query(`
       UPDATE dbo.carriers
       SET
-        code = @code,
-        name = COALESCE(@name, name),
-        legal_name = @legal_name,
-        document = @document,
-        state_registration = @state_registration,
-        rntrc = @rntrc,
-        email = @email,
-        phone = @phone,
-        contact_name = @contact_name,
-        zip_code = @zip_code,
-        street = @street,
-        street_number = @street_number,
-        complement = @complement,
-        neighborhood = @neighborhood,
-        city = @city,
-        state = @state,
-        vehicle_type = @vehicle_type,
-        plate = @plate,
-        notes = @notes,
+        code = COALESCE(@code, code),
+        legal_name = COALESCE(@legal_name, legal_name),
+        trade_name = COALESCE(@trade_name, trade_name),
+        document_type = COALESCE(@document_type, document_type),
+        document_number = COALESCE(@document_number, document_number),
+        state_registration = COALESCE(@state_registration, state_registration),
+        municipal_registration = COALESCE(@municipal_registration, municipal_registration),
+        rntrc = COALESCE(@rntrc, rntrc),
+        email = COALESCE(@email, email),
+        phone = COALESCE(@phone, phone),
+        contact_name = COALESCE(@contact_name, contact_name),
+        zip_code = COALESCE(@zip_code, zip_code),
+        street = COALESCE(@street, street),
+        number = COALESCE(@number, number),
+        complement = COALESCE(@complement, complement),
+        district = COALESCE(@district, district),
+        city = COALESCE(@city, city),
+        state = COALESCE(@state, state),
+        notes = COALESCE(@notes, notes),
         active = COALESCE(@active, active),
         updated_at = SYSUTCDATETIME()
       OUTPUT INSERTED.*
@@ -278,18 +281,18 @@ export async function updateCarrier(args: UpdateArgs) {
   return r.recordset[0] ?? null;
 }
 
-export async function existsCarrierByDocument(companyId: number, document: string, ignoreId?: number) {
+export async function existsCarrierByDocument(companyId: number, documentNumber: string, ignoreId?: number) {
   const pool = await getPool();
   const req = pool
     .request()
     .input("company_id", companyId)
-    .input("document", document);
+    .input("document_number", documentNumber);
 
   let sql = `
     SELECT TOP 1 id
     FROM dbo.carriers
     WHERE company_id=@company_id
-      AND document=@document
+      AND document_number=@document_number
   `;
 
   if (ignoreId) {

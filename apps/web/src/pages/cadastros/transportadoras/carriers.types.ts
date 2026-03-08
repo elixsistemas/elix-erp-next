@@ -1,12 +1,16 @@
 export type Carrier = {
   id: number;
   company_id: number;
-
   code: string | null;
-  name: string;
-  legal_name: string | null;
-  document: string | null;
+
+  legal_name: string;
+  trade_name: string | null;
+
+  document_type: "CPF" | "CNPJ";
+  document_number: string;
+
   state_registration: string | null;
+  municipal_registration: string | null;
   rntrc: string | null;
 
   email: string | null;
@@ -15,44 +19,42 @@ export type Carrier = {
 
   zip_code: string | null;
   street: string | null;
-  street_number: string | null;
+  number: string | null;
   complement: string | null;
-  neighborhood: string | null;
+  district: string | null;
   city: string | null;
   state: string | null;
 
-  vehicle_type: string | null;
-  plate: string | null;
-
   notes: string | null;
   active: boolean;
-
   created_at: string;
   updated_at: string;
 };
 
 export type CarrierFormValues = {
   code: string;
-  name: string;
-  legal_name: string;
-  document: string;
-  state_registration: string;
+
+  legalName: string;
+  tradeName: string;
+
+  documentType: "CPF" | "CNPJ";
+  documentNumber: string;
+
+  stateRegistration: string;
+  municipalRegistration: string;
   rntrc: string;
 
   email: string;
   phone: string;
-  contact_name: string;
+  contactName: string;
 
-  zip_code: string;
+  zipCode: string;
   street: string;
-  street_number: string;
+  number: string;
   complement: string;
-  neighborhood: string;
+  district: string;
   city: string;
   state: string;
-
-  vehicle_type: string;
-  plate: string;
 
   notes: string;
   active: boolean;

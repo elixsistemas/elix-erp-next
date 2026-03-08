@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useEffect } from "react";
 
 function ItemLink({ item, depth = 0 }: { item: MenuItem; depth?: number }) {
-  const end = item.path === "/inventory"; // ✅ só o saldo atual precisa ser exato
+  const end = item.end ?? true; // ✅ só o saldo atual precisa ser exato
 
   return (
     <NavLink

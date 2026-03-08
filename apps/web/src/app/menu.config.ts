@@ -5,6 +5,7 @@ export type MenuItem = {
   path: string;
   module?: string;
   perm?: string;
+  end?: boolean;
   children?: MenuItem[];
 };
 
@@ -220,6 +221,15 @@ export const MENU_CONFIG: MenuItem[] = [
         path: "/cadastros/transportadoras",
         module: "cadastros.carriers",
         perm: "carriers.read",
+        end: true,
+      },  
+      {
+        key: "carrier_vehicles",
+        label: "Veículos de transportadoras",
+        path: "/cadastros/transportadoras/veiculos",
+        module: "cadastros.carriers",
+        perm: "carrier_vehicles.read",
+        end: true,
       },
       {
         key: "products",

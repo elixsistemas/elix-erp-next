@@ -1,19 +1,33 @@
 import * as React from "react";
-import { Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 import { toast } from "sonner";
+
 import { BrDocumentInput } from "@/shared/br/ui/BrDocumentInput";
 import { onlyDigits } from "@/shared/br/digits";
-import { maskCep, maskPhoneBR, maskCPF, maskCNPJ } from "@/shared/br/masks";
-import { fetchAddressByCep } from "@/shared/br/services/viacep";
+import { maskCep, maskPhoneBR } from "@/shared/br/masks";
 import { fetchCompanyByCnpj } from "@/shared/br/services/brasilapi";
+import { useCepLookup } from "@/shared/br/hooks/useCepLookup";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 import type { Carrier } from "../carriers.types";
 import type { CarrierFormValues } from "../carriers.types";
@@ -38,34 +52,40 @@ export function CarrierSheet({
 }: Props) {
   const [tab, setTab] = React.useState("geral");
   const [form, setForm] = React.useState<CarrierFormValues>(EMPTY_CARRIER_FORM);
+  const [lookingUpCnpj, setLookingUpCnpj] = React.useState(false);
+
+  const cepLookup = useCepLookup(form.zipCode);
 
   React.useEffect(() => {
     if (!open) return;
+
     setTab("geral");
 
     if (mode === "edit" && initialData) {
       setForm({
         code: initialData.code ?? "",
-        name: initialData.name ?? "",
-        legal_name: initialData.legal_name ?? "",
-        document: initialData.document ?? "",
-        state_registration: initialData.state_registration ?? "",
+
+        legalName: initialData.legal_name ?? "",
+        tradeName: initialData.trade_name ?? "",
+
+        documentType: initialData.document_type ?? "CNPJ",
+        documentNumber: initialData.document_number ?? "",
+
+        stateRegistration: initialData.state_registration ?? "",
+        municipalRegistration: initialData.municipal_registration ?? "",
         rntrc: initialData.rntrc ?? "",
 
         email: initialData.email ?? "",
         phone: initialData.phone ?? "",
-        contact_name: initialData.contact_name ?? "",
+        contactName: initialData.contact_name ?? "",
 
-        zip_code: initialData.zip_code ?? "",
+        zipCode: initialData.zip_code ?? "",
         street: initialData.street ?? "",
-        street_number: initialData.street_number ?? "",
+        number: initialData.number ?? "",
         complement: initialData.complement ?? "",
-        neighborhood: initialData.neighborhood ?? "",
+        district: initialData.district ?? "",
         city: initialData.city ?? "",
         state: initialData.state ?? "",
-
-        vehicle_type: initialData.vehicle_type ?? "",
-        plate: initialData.plate ?? "",
 
         notes: initialData.notes ?? "",
         active: !!initialData.active,
@@ -76,7 +96,28 @@ export function CarrierSheet({
     setForm(EMPTY_CARRIER_FORM);
   }, [open, mode, initialData]);
 
-  function set<K extends keyof CarrierFormValues>(key: K, value: CarrierFormValues[K]) {
+  React.useEffect(() => {
+    if (!open || !cepLookup.data) return;
+
+    setForm((prev) => ({
+      ...prev,
+      street: cepLookup.data.logradouro ?? prev.street,
+      complement: cepLookup.data.complemento ?? prev.complement,
+      district: cepLookup.data.bairro ?? prev.district,
+      city: cepLookup.data.localidade ?? prev.city,
+      state: cepLookup.data.uf ?? prev.state,
+    }));
+  }, [open, cepLookup.data]);
+
+  React.useEffect(() => {
+    if (!open || !cepLookup.error) return;
+    toast.error(cepLookup.error);
+  }, [open, cepLookup.error]);
+
+  function set<K extends keyof CarrierFormValues>(
+    key: K,
+    value: CarrierFormValues[K],
+  ) {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -84,60 +125,43 @@ export function CarrierSheet({
     set(key, onlyDigits(raw) as CarrierFormValues[K]);
   }
 
-  const docDigits = onlyDigits(form.document ?? "");
-  const personType = docDigits.length > 11 ? "PJ" : "PF";
-  const maskedDoc = personType === "PF" ? maskCPF(form.document ?? "") : maskCNPJ(form.document ?? "");
-
-  async function lookupCep() {
-    const cep = onlyDigits(form.zip_code ?? "");
-    if (cep.length !== 8) {
-      toast.error("Informe um CEP válido.");
+  async function lookupCnpj() {
+    if (form.documentType !== "CNPJ") {
+      toast.error("A consulta automática está disponível para CNPJ.");
       return;
     }
 
-    try {
-      const j = await fetchAddressByCep(cep);
-      set("street", j.logradouro ?? "");
-      set("complement", j.complemento ?? "");
-      set("neighborhood", j.bairro ?? "");
-      set("city", j.localidade ?? "");
-      set("state", j.uf ?? "");
-      toast.success("Endereço carregado pelo CEP");
-    } catch (e: any) {
-      toast.error(e?.message ?? "Falha ao consultar CEP");
-    }
-  }
-
-  async function lookupCnpj() {
-    if (personType !== "PJ") return;
-
-    const cnpj = onlyDigits(form.document ?? "");
+    const cnpj = onlyDigits(form.documentNumber);
     if (cnpj.length !== 14) {
       toast.error("Informe um CNPJ válido.");
       return;
     }
 
     try {
+      setLookingUpCnpj(true);
+
       const j = await fetchCompanyByCnpj(cnpj);
 
-      if (j?.razao_social) set("name", j.razao_social);
-      if (j?.email) set("email", j.email);
-      if (j?.telefone) setDigits("phone", j.telefone);
-
-      if (j?.logradouro) {
-        const n = j.numero ? `, ${j.numero}` : "";
-        set("street", `${j.logradouro}${n}`);
-      }
-
-      if (j?.complemento) set("complement", j.complemento);
-      if (j?.bairro) set("neighborhood", j.bairro);
-      if (j?.municipio) set("city", j.municipio);
-      if (j?.uf) set("state", j.uf);
-      if (j?.cep) setDigits("zip_code", j.cep);
+      setForm((prev) => ({
+        ...prev,
+        legalName: j.razao_social ?? prev.legalName,
+        tradeName: j.nome_fantasia ?? prev.tradeName,
+        email: j.email ?? prev.email,
+        phone: j.telefone ? onlyDigits(j.telefone) : prev.phone,
+        zipCode: j.cep ? onlyDigits(j.cep) : prev.zipCode,
+        street: j.logradouro ?? prev.street,
+        number: j.numero ?? prev.number,
+        complement: j.complemento ?? prev.complement,
+        district: j.bairro ?? prev.district,
+        city: j.municipio ?? prev.city,
+        state: j.uf ?? prev.state,
+      }));
 
       toast.success("Dados do CNPJ carregados");
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao consultar CNPJ");
+    } finally {
+      setLookingUpCnpj(false);
     }
   }
 
@@ -145,9 +169,11 @@ export function CarrierSheet({
     await onSubmit(form);
   }
 
+  const personType = form.documentType === "CNPJ" ? "PJ" : "PF";
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-[760px]">
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle>
             {mode === "create"
@@ -156,81 +182,153 @@ export function CarrierSheet({
           </SheetTitle>
         </SheetHeader>
 
-        <Tabs value={tab} onValueChange={setTab} className="mt-4">
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs value={tab} onValueChange={setTab} className="mt-6">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="geral">Geral</TabsTrigger>
             <TabsTrigger value="contato">Contato</TabsTrigger>
             <TabsTrigger value="endereco">Endereço</TabsTrigger>
-            <TabsTrigger value="operacao">Operação</TabsTrigger>
           </TabsList>
 
           <TabsContent value="geral" className="mt-4 space-y-4">
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="grid gap-2">
-                <Label>Código</Label>
+            <div className="grid gap-4 md:grid-cols-4">
+              <div>
+                <Label htmlFor="carrier-code">Código</Label>
                 <Input
+                  id="carrier-code"
                   value={form.code}
                   onChange={(e) => set("code", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Nome / Razão</Label>
+              <div className="md:col-span-3">
+                <Label htmlFor="carrier-legal-name">Razão social</Label>
                 <Input
-                  value={form.name}
-                  onChange={(e) => set("name", e.target.value)}
+                  id="carrier-legal-name"
+                  value={form.legalName}
+                  onChange={(e) => set("legalName", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Razão social</Label>
+              <div className="md:col-span-2">
+                <Label htmlFor="carrier-trade-name">Nome fantasia</Label>
                 <Input
-                  value={form.legal_name}
-                  onChange={(e) => set("legal_name", e.target.value)}
+                  id="carrier-trade-name"
+                  value={form.tradeName}
+                  onChange={(e) => set("tradeName", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <Label>Ativa</Label>
-                <Switch
-                  checked={form.active}
-                  onCheckedChange={(checked) => set("active", checked)}
+              <div>
+                <Label>Tipo documento</Label>
+                <Select
+                  value={form.documentType}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      documentType: value as "CPF" | "CNPJ",
+                      documentNumber: "",
+                    }))
+                  }
+                  disabled={saving}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Tipo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CPF">CPF</SelectItem>
+                    <SelectItem value="CNPJ">CNPJ</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="md:col-span-2">
+                <Label>CPF/CNPJ</Label>
+                <BrDocumentInput
+                  value={form.documentNumber}
+                  onChange={(rawDigits) => set("documentNumber", rawDigits)}
+                  personType={personType}
+                  placeholder={
+                    form.documentType === "CNPJ"
+                      ? "00.000.000/0000-00"
+                      : "000.000.000-00"
+                  }
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>Documento (CPF/CNPJ)</Label>
-                <div className="flex gap-2">
-                  <BrDocumentInput
-                    value={maskedDoc}
-                    onChange={(value) => setDigits("document", value)}
-                    personType={personType}
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={lookupCnpj}
+                  disabled={saving || lookingUpCnpj || form.documentType !== "CNPJ"}
+                >
+                  {lookingUpCnpj ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Search className="mr-2 h-4 w-4" />
+                  )}
+                  Buscar CNPJ
+                </Button>
+              </div>
+
+              <div>
+                <Label htmlFor="carrier-ie">Inscrição estadual</Label>
+                <Input
+                  id="carrier-ie"
+                  value={form.stateRegistration}
+                  onChange={(e) => set("stateRegistration", e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="carrier-im">Inscrição municipal</Label>
+                <Input
+                  id="carrier-im"
+                  value={form.municipalRegistration}
+                  onChange={(e) => set("municipalRegistration", e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="carrier-rntrc">RNTRC</Label>
+                <Input
+                  id="carrier-rntrc"
+                  value={form.rntrc}
+                  onChange={(e) => set("rntrc", e.target.value)}
+                  disabled={saving}
+                />
+              </div>
+
+              <div className="md:col-span-4 rounded-md border p-3">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={form.active}
+                    onCheckedChange={(checked) => set("active", checked)}
+                    disabled={saving}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={lookupCnpj}
-                    title="Buscar CNPJ"
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">Transportadora ativa</span>
+                    <span className="text-xs text-muted-foreground">
+                      Disponível para uso nos processos do ERP.
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              <div className="grid gap-2">
-                <Label>IE</Label>
-                <Input
-                  value={form.state_registration}
-                  onChange={(e) => set("state_registration", e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>RNTRC</Label>
-                <Input
-                  value={form.rntrc}
-                  onChange={(e) => set("rntrc", e.target.value)}
+              <div className="md:col-span-4">
+                <Label htmlFor="carrier-notes">Observações</Label>
+                <Textarea
+                  id="carrier-notes"
+                  value={form.notes}
+                  onChange={(e) => set("notes", e.target.value)}
+                  disabled={saving}
+                  placeholder="Dados úteis para frete, fiscal e operação."
                 />
               </div>
             </div>
@@ -238,28 +336,35 @@ export function CarrierSheet({
 
           <TabsContent value="contato" className="mt-4 space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="grid gap-2">
-                <Label>Contato (nome)</Label>
+              <div>
+                <Label htmlFor="carrier-contact-name">Contato</Label>
                 <Input
-                  value={form.contact_name}
-                  onChange={(e) => set("contact_name", e.target.value)}
+                  id="carrier-contact-name"
+                  value={form.contactName}
+                  onChange={(e) => set("contactName", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>Telefone</Label>
+              <div>
+                <Label htmlFor="carrier-phone">Telefone</Label>
                 <Input
-                  value={maskPhoneBR(form.phone ?? "")}
+                  id="carrier-phone"
+                  value={maskPhoneBR(form.phone)}
                   onChange={(e) => setDigits("phone", e.target.value)}
                   inputMode="numeric"
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>E-mail</Label>
+              <div>
+                <Label htmlFor="carrier-email">E-mail</Label>
                 <Input
+                  id="carrier-email"
+                  type="email"
                   value={form.email}
                   onChange={(e) => set("email", e.target.value)}
+                  disabled={saving}
                 />
               </div>
             </div>
@@ -267,100 +372,80 @@ export function CarrierSheet({
 
           <TabsContent value="endereco" className="mt-4 space-y-4">
             <div className="grid gap-4 md:grid-cols-4">
-              <div className="grid gap-2">
-                <Label>CEP</Label>
-                <div className="flex gap-2">
+              <div>
+                <Label htmlFor="carrier-zip">CEP</Label>
+                <div className="relative">
                   <Input
-                    value={maskCep(form.zip_code ?? "")}
-                    onChange={(e) => setDigits("zip_code", e.target.value)}
+                    id="carrier-zip"
+                    value={maskCep(form.zipCode)}
+                    onChange={(e) => setDigits("zipCode", e.target.value)}
                     inputMode="numeric"
+                    disabled={saving}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={lookupCep}
-                    title="Buscar CEP"
-                  >
-                    <Search className="h-4 w-4" />
-                  </Button>
+                  {cepLookup.loading && (
+                    <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
+                  )}
                 </div>
               </div>
 
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Rua</Label>
+              <div className="md:col-span-2">
+                <Label htmlFor="carrier-street">Logradouro</Label>
                 <Input
+                  id="carrier-street"
                   value={form.street}
                   onChange={(e) => set("street", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>Número</Label>
+              <div>
+                <Label htmlFor="carrier-number">Número</Label>
                 <Input
-                  value={form.street_number}
-                  onChange={(e) => set("street_number", e.target.value)}
+                  id="carrier-number"
+                  value={form.number}
+                  onChange={(e) => set("number", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>Complemento</Label>
+              <div>
+                <Label htmlFor="carrier-complement">Complemento</Label>
                 <Input
+                  id="carrier-complement"
                   value={form.complement}
                   onChange={(e) => set("complement", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>Bairro</Label>
+              <div>
+                <Label htmlFor="carrier-district">Bairro</Label>
                 <Input
-                  value={form.neighborhood}
-                  onChange={(e) => set("neighborhood", e.target.value)}
+                  id="carrier-district"
+                  value={form.district}
+                  onChange={(e) => set("district", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>Cidade</Label>
+              <div>
+                <Label htmlFor="carrier-city">Cidade</Label>
                 <Input
+                  id="carrier-city"
                   value={form.city}
                   onChange={(e) => set("city", e.target.value)}
+                  disabled={saving}
                 />
               </div>
 
-              <div className="grid gap-2">
-                <Label>UF</Label>
+              <div>
+                <Label htmlFor="carrier-state">UF</Label>
                 <Input
+                  id="carrier-state"
+                  maxLength={2}
                   value={form.state}
-                  onChange={(e) => set("state", e.target.value)}
-                />
-              </div>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="operacao" className="mt-4 space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid gap-2">
-                <Label>Tipo de veículo</Label>
-                <Input
-                  value={form.vehicle_type}
-                  onChange={(e) => set("vehicle_type", e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label>Placa</Label>
-                <Input
-                  value={form.plate}
-                  onChange={(e) => set("plate", e.target.value)}
-                />
-              </div>
-
-              <div className="grid gap-2 md:col-span-2">
-                <Label>Observações</Label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                  placeholder="Dados úteis para logística, frete e fiscal."
+                  onChange={(e) => set("state", e.target.value.toUpperCase())}
+                  disabled={saving}
                 />
               </div>
             </div>
@@ -368,7 +453,11 @@ export function CarrierSheet({
         </Tabs>
 
         <SheetFooter className="mt-6">
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Cancelar
           </Button>
           <Button onClick={handleSubmit} disabled={saving}>

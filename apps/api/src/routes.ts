@@ -22,6 +22,7 @@ import { usersRoutes } from "./modules/users/users.routes";
 import { companyModulesRoutes } from "./modules/company_modules/company_modules.routes";
 import { paymentMethodsRoutes } from "./modules/payment_methods/payment_methods.routes";
 import { carriersRoutes } from "./modules/carriers/carriers.routes";
+import { carrierVehiclesRoutes }  from "./modules/carrier-vehicles/carrier-vehicles.routes";
 
 
 export async function routes(app: FastifyInstance) {
@@ -41,6 +42,7 @@ export async function routes(app: FastifyInstance) {
   await app.register(fiscalRoutes);
   await app.register(ordersRoutes);
   await app.register(paymentTermsRoutes);
+  await app.register(carrierVehiclesRoutes);
   await app.register(suppliersRoutes);
   await app.register(rolesRoutes);
   await app.register(usersRoutes);

@@ -2,88 +2,106 @@ import { z } from "zod";
 import type { CarrierFormValues } from "./carriers.types";
 
 export const carrierFormSchema = z.object({
-  code: z.string().trim().max(30),
-  name: z.string().trim().min(2, "Informe o nome"),
-  legal_name: z.string().trim().max(200),
-  document: z.string().trim().max(20),
-  state_registration: z.string().trim().max(30),
-  rntrc: z.string().trim().max(30),
+  code: z.string().trim().max(30).optional().or(z.literal("")),
 
-  email: z.string().trim().max(150),
-  phone: z.string().trim().max(30),
-  contact_name: z.string().trim().max(120),
+  legalName: z.string().trim().min(2, "Informe a razão social").max(200),
+  tradeName: z.string().trim().max(150).optional().or(z.literal("")),
 
-  zip_code: z.string().trim().max(12),
-  street: z.string().trim().max(150),
-  street_number: z.string().trim().max(30),
-  complement: z.string().trim().max(80),
-  neighborhood: z.string().trim().max(80),
-  city: z.string().trim().max(80),
-  state: z.string().trim().max(2),
+  documentType: z.enum(["CPF", "CNPJ"]),
+  documentNumber: z.string().trim().min(11, "Informe o CPF/CNPJ").max(20),
 
-  vehicle_type: z.string().trim().max(30),
-  plate: z.string().trim().max(10),
+  stateRegistration: z.string().trim().max(30).optional().or(z.literal("")),
+  municipalRegistration: z.string().trim().max(30).optional().or(z.literal("")),
+  rntrc: z.string().trim().max(30).optional().or(z.literal("")),
 
-  notes: z.string().trim().max(500),
+  email: z
+    .string()
+    .trim()
+    .max(150)
+    .refine((v) => !v || /\S+@\S+\.\S+/.test(v), "E-mail inválido")
+    .optional()
+    .or(z.literal("")),
+
+  phone: z.string().trim().max(30).optional().or(z.literal("")),
+  contactName: z.string().trim().max(120).optional().or(z.literal("")),
+
+  zipCode: z.string().trim().max(12).optional().or(z.literal("")),
+  street: z.string().trim().max(150).optional().or(z.literal("")),
+  number: z.string().trim().max(30).optional().or(z.literal("")),
+  complement: z.string().trim().max(80).optional().or(z.literal("")),
+  district: z.string().trim().max(80).optional().or(z.literal("")),
+  city: z.string().trim().max(80).optional().or(z.literal("")),
+  state: z.string().trim().max(2).optional().or(z.literal("")),
+
+  notes: z.string().trim().max(500).optional().or(z.literal("")),
   active: z.boolean(),
 });
 
-function toNull(value: string) {
+function nullable(value?: string) {
   const v = value?.trim();
   return v ? v : null;
 }
 
+function normalizeDocument(value?: string) {
+  const v = value?.replace(/\D/g, "") ?? "";
+  return v || null;
+}
+
 export function normalizeCarrierPayload(values: CarrierFormValues) {
   return {
-    code: toNull(values.code),
-    name: values.name.trim(),
-    legalName: toNull(values.legal_name),
-    document: toNull(values.document),
-    stateRegistration: toNull(values.state_registration),
-    rntrc: toNull(values.rntrc),
+    code: nullable(values.code),
 
-    email: toNull(values.email),
-    phone: toNull(values.phone),
-    contactName: toNull(values.contact_name),
+    legalName: values.legalName.trim(),
+    tradeName: nullable(values.tradeName),
 
-    zipCode: toNull(values.zip_code),
-    street: toNull(values.street),
-    streetNumber: toNull(values.street_number),
-    complement: toNull(values.complement),
-    neighborhood: toNull(values.neighborhood),
-    city: toNull(values.city),
-    state: toNull(values.state),
+    documentType: values.documentType,
+    documentNumber: normalizeDocument(values.documentNumber),
 
-    vehicleType: toNull(values.vehicle_type),
-    plate: toNull(values.plate),
+    stateRegistration: nullable(values.stateRegistration),
+    municipalRegistration: nullable(values.municipalRegistration),
+    rntrc: nullable(values.rntrc),
 
-    notes: toNull(values.notes),
+    email: nullable(values.email)?.toLowerCase() ?? null,
+    phone: nullable(values.phone),
+    contactName: nullable(values.contactName),
+
+    zipCode: nullable(values.zipCode),
+    street: nullable(values.street),
+    number: nullable(values.number),
+    complement: nullable(values.complement),
+    district: nullable(values.district),
+    city: nullable(values.city),
+    state: nullable(values.state)?.toUpperCase() ?? null,
+
+    notes: nullable(values.notes),
     active: values.active,
   };
 }
 
 export const EMPTY_CARRIER_FORM: CarrierFormValues = {
   code: "",
-  name: "",
-  legal_name: "",
-  document: "",
-  state_registration: "",
+
+  legalName: "",
+  tradeName: "",
+
+  documentType: "CNPJ",
+  documentNumber: "",
+
+  stateRegistration: "",
+  municipalRegistration: "",
   rntrc: "",
 
   email: "",
   phone: "",
-  contact_name: "",
+  contactName: "",
 
-  zip_code: "",
+  zipCode: "",
   street: "",
-  street_number: "",
+  number: "",
   complement: "",
-  neighborhood: "",
+  district: "",
   city: "",
   state: "",
-
-  vehicle_type: "",
-  plate: "",
 
   notes: "",
   active: true,

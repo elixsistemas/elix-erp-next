@@ -2,10 +2,14 @@ import * as repo from "./carriers.repository";
 
 type CarrierPayload = {
   code?: string | null;
-  name?: string;
-  legalName?: string | null;
-  document?: string | null;
+  legalName?: string;
+  tradeName?: string | null;
+
+  documentType?: "CPF" | "CNPJ";
+  documentNumber?: string;
+
   stateRegistration?: string | null;
+  municipalRegistration?: string | null;
   rntrc?: string | null;
 
   email?: string | null;
@@ -14,14 +18,11 @@ type CarrierPayload = {
 
   zipCode?: string | null;
   street?: string | null;
-  streetNumber?: string | null;
+  number?: string | null;
   complement?: string | null;
-  neighborhood?: string | null;
+  district?: string | null;
   city?: string | null;
   state?: string | null;
-
-  vehicleType?: string | null;
-  plate?: string | null;
 
   notes?: string | null;
   active?: boolean;
@@ -54,20 +55,27 @@ export async function get(companyId: number, id: number) {
 }
 
 export async function create(companyId: number, data: CarrierPayload) {
-  const document = normalizeDocument(data.document);
+  const documentNumber = normalizeDocument(data.documentNumber);
 
-  if (document) {
-    const exists = await repo.existsCarrierByDocument(companyId, document);
-    if (exists) return { error: "DOCUMENT_ALREADY_EXISTS" as const };
+  if (!data.documentType || !documentNumber) {
+    return { error: "INVALID_DOCUMENT" as const };
   }
+
+  const exists = await repo.existsCarrierByDocument(companyId, documentNumber);
+  if (exists) return { error: "DOCUMENT_ALREADY_EXISTS" as const };
 
   const created = await repo.createCarrier({
     companyId,
     code: nullable(data.code),
-    name: String(data.name ?? "").trim(),
-    legalName: nullable(data.legalName),
-    document,
+
+    legalName: String(data.legalName ?? "").trim(),
+    tradeName: nullable(data.tradeName),
+
+    documentType: data.documentType,
+    documentNumber,
+
     stateRegistration: nullable(data.stateRegistration),
+    municipalRegistration: nullable(data.municipalRegistration),
     rntrc: nullable(data.rntrc),
 
     email: normalizeEmail(data.email),
@@ -76,14 +84,11 @@ export async function create(companyId: number, data: CarrierPayload) {
 
     zipCode: nullable(data.zipCode),
     street: nullable(data.street),
-    streetNumber: nullable(data.streetNumber),
+    number: nullable(data.number),
     complement: nullable(data.complement),
-    neighborhood: nullable(data.neighborhood),
+    district: nullable(data.district),
     city: nullable(data.city),
     state: nullable(data.state)?.toUpperCase() ?? null,
-
-    vehicleType: nullable(data.vehicleType),
-    plate: nullable(data.plate)?.toUpperCase() ?? null,
 
     notes: nullable(data.notes),
     active: data.active ?? true,
@@ -93,21 +98,31 @@ export async function create(companyId: number, data: CarrierPayload) {
 }
 
 export async function update(companyId: number, id: number, data: CarrierPayload) {
-  const document = normalizeDocument(data.document);
+  const documentNumber =
+    "documentNumber" in data ? normalizeDocument(data.documentNumber) : undefined;
 
-  if (document) {
-    const exists = await repo.existsCarrierByDocument(companyId, document, id);
+  if (documentNumber) {
+    const exists = await repo.existsCarrierByDocument(companyId, documentNumber, id);
     if (exists) return { error: "DOCUMENT_ALREADY_EXISTS" as const };
   }
 
   const updated = await repo.updateCarrier({
     companyId,
     id,
+
     code: "code" in data ? nullable(data.code) : undefined,
-    name: "name" in data ? String(data.name ?? "").trim() : undefined,
-    legalName: "legalName" in data ? nullable(data.legalName) : undefined,
-    document: "document" in data ? document : undefined,
+
+    legalName: "legalName" in data ? String(data.legalName ?? "").trim() : undefined,
+    tradeName: "tradeName" in data ? nullable(data.tradeName) : undefined,
+
+    documentType: "documentType" in data ? data.documentType : undefined,
+    documentNumber: "documentNumber" in data
+    ? normalizeDocument(data.documentNumber) ?? undefined
+    : undefined,
+
     stateRegistration: "stateRegistration" in data ? nullable(data.stateRegistration) : undefined,
+    municipalRegistration:
+      "municipalRegistration" in data ? nullable(data.municipalRegistration) : undefined,
     rntrc: "rntrc" in data ? nullable(data.rntrc) : undefined,
 
     email: "email" in data ? normalizeEmail(data.email) : undefined,
@@ -116,18 +131,15 @@ export async function update(companyId: number, id: number, data: CarrierPayload
 
     zipCode: "zipCode" in data ? nullable(data.zipCode) : undefined,
     street: "street" in data ? nullable(data.street) : undefined,
-    streetNumber: "streetNumber" in data ? nullable(data.streetNumber) : undefined,
+    number: "number" in data ? nullable(data.number) : undefined,
     complement: "complement" in data ? nullable(data.complement) : undefined,
-    neighborhood: "neighborhood" in data ? nullable(data.neighborhood) : undefined,
+    district: "district" in data ? nullable(data.district) : undefined,
     city: "city" in data ? nullable(data.city) : undefined,
     state: "state" in data ? (nullable(data.state)?.toUpperCase() ?? null) : undefined,
 
-    vehicleType: "vehicleType" in data ? nullable(data.vehicleType) : undefined,
-    plate: "plate" in data ? (nullable(data.plate)?.toUpperCase() ?? null) : undefined,
-
     notes: "notes" in data ? nullable(data.notes) : undefined,
     active: data.active,
-  } as any);
+  });
 
   return { data: updated };
 }

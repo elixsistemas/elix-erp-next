@@ -15,6 +15,7 @@ import CompanyPage from "@/pages/cadastros/empresa/CompanyPage";
 import CustomersPage from "@/pages/cadastros/clientes/CustomersPage";
 import SuppliersPage from "@/pages/cadastros/fornecedores/SuppliersPage";
 import CarriersPage from "@/pages/cadastros/transportadoras/CarriersPage";
+import CarrierVehiclesPage from "@/pages/cadastros/transportadoras-veiculos/CarrierVehiclesPage";
 import ProductsPage from "@/pages/cadastros/produtos/ProductsPage";
 import FiscalPage from "@/pages/cadastros/fiscal/FiscalPage";
 import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPage";
@@ -106,6 +107,16 @@ function AppBoot() {
                 element={
                   <RequireAccess perm="carriers.read">
                     <CarriersPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="cadastros.carriers" />}>
+              <Route
+                path="/cadastros/transportadoras/veiculos"
+                element={
+                  <RequireAccess perm="carrier_vehicles.read">
+                    <CarrierVehiclesPage />
                   </RequireAccess>
                 }
               />
