@@ -1,58 +1,52 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, RefreshCw } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 
 type Props = {
   q: string;
-  setQ: (v: string) => void;
-  statusFilter: "1" | "0" | "all";
-  setStatusFilter: (v: "1" | "0" | "all") => void;
+  onChangeQ: (value: string) => void;
+  showInactive: boolean;
+  onToggleInactive: (value: boolean) => void;
   loading: boolean;
-  onRefresh: () => void;
+  onReload: () => void;
   onCreate: () => void;
 };
 
 export function CarriersToolbar(props: Props) {
   return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center">
-      <Input
-        placeholder="Buscar por nome, documento, cidade, RNTRC..."
-        value={props.q}
-        onChange={(e) => props.setQ(e.target.value)}
-        className="md:max-w-sm"
-      />
+    <div className="space-y-3">
+      <div>
+        <h1 className="text-2xl font-semibold">Transportadoras</h1>
+        <p className="text-sm text-muted-foreground">
+          Cadastro completo para logística, frete e documentos fiscais.
+        </p>
+      </div>
 
-      <Select
-        value={props.statusFilter}
-        onValueChange={(v: "1" | "0" | "all") => props.setStatusFilter(v)}
-      >
-        <SelectTrigger className="w-full md:w-[180px]">
-          <SelectValue placeholder="Status" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="1">Ativas</SelectItem>
-          <SelectItem value="0">Inativas</SelectItem>
-          <SelectItem value="all">Todas</SelectItem>
-        </SelectContent>
-      </Select>
+      <div className="flex flex-col gap-3 md:flex-row md:items-center">
+        <Input
+          placeholder="Buscar por nome, documento, e-mail..."
+          value={props.q}
+          onChange={(e) => props.onChangeQ(e.target.value)}
+          className="md:max-w-sm"
+        />
 
-      <div className="flex items-center gap-2 md:ml-auto">
-        <Button variant="outline" onClick={props.onRefresh} disabled={props.loading}>
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Switch
+            checked={props.showInactive}
+            onCheckedChange={props.onToggleInactive}
+          />
+          <span className="text-sm">Mostrar inativos</span>
+        </div>
 
-        <Button onClick={props.onCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          Nova transportadora
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" onClick={props.onReload} disabled={props.loading}>
+            Atualizar
+          </Button>
+
+          <Button onClick={props.onCreate}>
+            Nova transportadora
+          </Button>
+        </div>
       </div>
     </div>
   );

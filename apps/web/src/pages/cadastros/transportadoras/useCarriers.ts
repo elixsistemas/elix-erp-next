@@ -1,179 +1,180 @@
-import { useEffect, useMemo, useState } from "react";
+import * as React from "react";
 import { toast } from "sonner";
-import type { Carrier } from "./carriers.types";
+import { onlyDigits } from "@/shared/br/digits";
+import { useDebouncedValue } from "@/shared/br/hooks/useDebouncedValue";
+import type { Carrier, CarrierFormValues } from "./carriers.types";
 import {
   carrierFormSchema,
+  EMPTY_CARRIER_FORM,
   normalizeCarrierPayload,
-  type CarrierFormValues,
 } from "./carriers.schema";
 import * as svc from "./carriers.service";
 
-const EMPTY_FORM: CarrierFormValues = {
-  code: "",
-  name: "",
-  legalName: "",
-  document: "",
-  stateRegistration: "",
-  rntrc: "",
+type Mode = "create" | "edit";
 
-  email: "",
-  phone: "",
-  contactName: "",
+function toNull<T>(v: T | "" | undefined | null) {
+  return v === "" || typeof v === "undefined" ? null : v;
+}
 
-  zipCode: "",
-  street: "",
-  streetNumber: "",
-  complement: "",
-  neighborhood: "",
-  city: "",
-  state: "",
+function sanitizePayload(data: CarrierFormValues) {
+  const payload = normalizeCarrierPayload(data);
 
-  vehicleType: "",
-  plate: "",
-  notes: "",
-  active: true,
-};
+  return {
+    ...payload,
+    document: toNull(onlyDigits(payload.document ?? "")),
+    phone: toNull(onlyDigits(payload.phone ?? "")),
+    zipCode: toNull(onlyDigits(payload.zipCode ?? "")),
+    state: payload.state ? payload.state.toUpperCase() : null,
+    plate: payload.plate ? payload.plate.toUpperCase() : null,
+  };
+}
 
 export function useCarriers() {
-  const [items, setItems] = useState<Carrier[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"1" | "0" | "all">("1");
+  const [rows, setRows] = React.useState<Carrier[]>([]);
+  const [loading, setLoading] = React.useState(false);
 
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Carrier | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState<CarrierFormValues>(EMPTY_FORM);
+  const [q, setQ] = React.useState("");
+  const debouncedQ = useDebouncedValue(q, 300);
+  const [showInactive, setShowInactive] = React.useState(false);
 
-  const filtered = useMemo(() => items, [items]);
+  const [open, setOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<Mode>("create");
+  const [editing, setEditing] = React.useState<Carrier | null>(null);
+  const [saving, setSaving] = React.useState(false);
 
-  async function load() {
+  const [form, setForm] = React.useState<CarrierFormValues>(EMPTY_CARRIER_FORM);
+
+  async function reload() {
     setLoading(true);
     try {
-      const list = await svc.listCarriers({
-        q,
-        active: statusFilter === "all" ? undefined : statusFilter,
+      const data = await svc.listCarriers({
+        q: debouncedQ,
+        active: showInactive ? undefined : "1",
       });
-      setItems(list);
-    } catch (e: any) {
-      console.error(e);
+      setRows(data);
+    } catch (err: any) {
+      console.error(err);
       toast.error("Falha ao carregar transportadoras", {
-        description: e?.message || "Verifique backend/token",
+        description: err?.message || "Tente novamente.",
       });
-      setItems([]);
+      setRows([]);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    void load();
-  }, [statusFilter]);
+  React.useEffect(() => {
+    void reload();
+  }, [debouncedQ, showInactive]);
 
-  function openCreate() {
+  function onCreate() {
+    setMode("create");
     setEditing(null);
-    setForm(EMPTY_FORM);
+    setForm(EMPTY_CARRIER_FORM);
     setOpen(true);
   }
 
-  function openEdit(row: Carrier) {
+  function onEdit(row: Carrier) {
+    setMode("edit");
     setEditing(row);
     setForm({
       code: row.code ?? "",
       name: row.name ?? "",
-      legalName: row.legal_name ?? "",
+      legal_name: row.legal_name ?? "",
       document: row.document ?? "",
-      stateRegistration: row.state_registration ?? "",
+      state_registration: row.state_registration ?? "",
       rntrc: row.rntrc ?? "",
 
       email: row.email ?? "",
       phone: row.phone ?? "",
-      contactName: row.contact_name ?? "",
+      contact_name: row.contact_name ?? "",
 
-      zipCode: row.zip_code ?? "",
+      zip_code: row.zip_code ?? "",
       street: row.street ?? "",
-      streetNumber: row.street_number ?? "",
+      street_number: row.street_number ?? "",
       complement: row.complement ?? "",
       neighborhood: row.neighborhood ?? "",
       city: row.city ?? "",
       state: row.state ?? "",
 
-      vehicleType: row.vehicle_type ?? "",
+      vehicle_type: row.vehicle_type ?? "",
       plate: row.plate ?? "",
+
       notes: row.notes ?? "",
       active: !!row.active,
     });
     setOpen(true);
   }
 
-  async function save() {
-    const parsed = carrierFormSchema.safeParse(form);
+  async function onRemove(row: Carrier) {
+    try {
+      await svc.deleteCarrier(row.id);
+      toast.success("Transportadora removida");
+      await reload();
+    } catch (err: any) {
+      console.error(err);
+      toast.error("Falha ao remover transportadora", {
+        description: err?.message || "Tente novamente.",
+      });
+    }
+  }
+
+  async function onSubmit(data?: CarrierFormValues) {
+    const current = data ?? form;
+    const parsed = carrierFormSchema.safeParse(current);
 
     if (!parsed.success) {
       toast.error("Revise o formulário", {
-        description: parsed.error.issues?.[0]?.message ?? "Dados inválidos",
+        description: parsed.error.issues?.[0]?.message || "Dados inválidos.",
       });
       return;
     }
 
     setSaving(true);
     try {
-      const payload = normalizeCarrierPayload(parsed.data);
+      const payload = sanitizePayload(parsed.data);
 
-      if (editing) {
-        await svc.updateCarrier(editing.id, payload);
-        toast.success("Transportadora atualizada");
-      } else {
+      if (mode === "create") {
         await svc.createCarrier(payload);
         toast.success("Transportadora criada");
+      } else if (editing) {
+        await svc.updateCarrier(editing.id, payload);
+        toast.success("Transportadora atualizada");
       }
 
       setOpen(false);
-      await load();
-    } catch (e: any) {
-      console.error(e);
+      await reload();
+    } catch (err: any) {
+      console.error(err);
       toast.error("Falha ao salvar transportadora", {
         description:
-          e?.message === "DOCUMENT_ALREADY_EXISTS"
-            ? "Já existe uma transportadora com este documento"
-            : e?.message || "Tente novamente",
+          err?.message === "DOCUMENT_ALREADY_EXISTS"
+            ? "Já existe uma transportadora com este documento."
+            : err?.message || "Tente novamente.",
       });
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(row: Carrier) {
-    try {
-      await svc.deleteCarrier(row.id);
-      toast.success("Transportadora removida");
-      await load();
-    } catch (e: any) {
-      console.error(e);
-      toast.error("Falha ao remover", {
-        description: e?.message || "Tente novamente",
-      });
-    }
-  }
-
   return {
-    items,
-    filtered,
+    rows,
     loading,
     q,
     setQ,
-    statusFilter,
-    setStatusFilter,
+    showInactive,
+    setShowInactive,
     open,
     setOpen,
+    mode,
     editing,
+    saving,
     form,
     setForm,
-    saving,
-    load,
-    openCreate,
-    openEdit,
-    save,
-    remove,
+    reload,
+    onCreate,
+    onEdit,
+    onRemove,
+    onSubmit,
   };
 }

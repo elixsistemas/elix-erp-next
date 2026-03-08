@@ -1,6 +1,7 @@
 export type Carrier = {
   id: number;
   company_id: number;
+
   code: string | null;
   name: string;
   legal_name: string | null;
@@ -25,6 +26,34 @@ export type Carrier = {
 
   notes: string | null;
   active: boolean;
+
   created_at: string;
   updated_at: string;
+};
+
+export type CarrierFormValues = {
+  code: string;
+  name: string;
+  legal_name: string;
+  document: string;
+  state_registration: string;
+  rntrc: string;
+
+  email: string;
+  phone: string;
+  contact_name: string;
+
+  zip_code: string;
+  street: string;
+  street_number: string;
+  complement: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+
+  vehicle_type: string;
+  plate: string;
+
+  notes: string;
+  active: boolean;
 };

@@ -1,90 +1,98 @@
-import type { Carrier } from "../carriers.types";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Pencil, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { Carrier } from "../carriers.types";
 
 type Props = {
   rows: Carrier[];
+  loading: boolean;
   onEdit: (row: Carrier) => void;
-  onDelete: (row: Carrier) => void;
+  onRemove: (row: Carrier) => void;
 };
 
 export function CarriersTable(props: Props) {
+  if (props.loading) {
+    return (
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Carregando...
+      </div>
+    );
+  }
+
+  if (!props.rows.length) {
+    return (
+      <div className="rounded-lg border p-4 text-sm text-muted-foreground">
+        Nenhuma transportadora encontrada.
+      </div>
+    );
+  }
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Nome</TableHead>
-          <TableHead>Documento</TableHead>
-          <TableHead>Contato</TableHead>
-          <TableHead>Cidade/UF</TableHead>
-          <TableHead>Status</TableHead>
-          <TableHead className="w-[160px]">Ações</TableHead>
-        </TableRow>
-      </TableHeader>
+    <div className="overflow-hidden rounded-lg border">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/40">
+          <tr className="text-left">
+            <th className="px-4 py-3">ID</th>
+            <th className="px-4 py-3">Transportadora</th>
+            <th className="px-4 py-3">Documento</th>
+            <th className="px-4 py-3">Contato</th>
+            <th className="px-4 py-3">Status</th>
+            <th className="px-4 py-3 text-right">Ações</th>
+          </tr>
+        </thead>
 
-      <TableBody>
-        {props.rows.map((row) => (
-          <TableRow key={row.id}>
-            <TableCell>
-              <div className="flex flex-col gap-1">
-                <span className="font-medium">{row.name}</span>
-                {row.legal_name && (
-                  <span className="text-xs text-muted-foreground">{row.legal_name}</span>
+        <tbody>
+          {props.rows.map((row) => (
+            <tr key={row.id} className="border-t">
+              <td className="px-4 py-3 font-medium">#{row.id}</td>
+
+              <td className="px-4 py-3">
+                <div className="font-medium">{row.name}</div>
+                {(row.city || row.state) && (
+                  <div className="text-xs text-muted-foreground">
+                    {[row.city, row.state].filter(Boolean).join("/")}
+                  </div>
                 )}
-              </div>
-            </TableCell>
+              </td>
 
-            <TableCell>
-              <div className="flex flex-col gap-1">
-                <span>{row.document || "-"}</span>
+              <td className="px-4 py-3">
+                <div>{row.document || "-"}</div>
                 {row.rntrc && (
-                  <span className="text-xs text-muted-foreground">RNTRC: {row.rntrc}</span>
+                  <div className="text-xs text-muted-foreground">
+                    RNTRC: {row.rntrc}
+                  </div>
                 )}
-              </div>
-            </TableCell>
+              </td>
 
-            <TableCell>
-              <div className="flex flex-col gap-1">
-                <span>{row.contact_name || "-"}</span>
-                <span className="text-xs text-muted-foreground">
-                  {row.phone || row.email || "-"}
-                </span>
-              </div>
-            </TableCell>
+              <td className="px-4 py-3">
+                <div>{row.email || "-"}</div>
+                {(row.phone || row.contact_name) && (
+                  <div className="text-xs text-muted-foreground">
+                    {[row.phone, row.contact_name].filter(Boolean).join(" • ")}
+                  </div>
+                )}
+              </td>
 
-            <TableCell>{[row.city, row.state].filter(Boolean).join("/") || "-"}</TableCell>
+              <td className="px-4 py-3">
+                <Badge variant={row.active ? "default" : "secondary"}>
+                  {row.active ? "Ativo" : "Inativo"}
+                </Badge>
+              </td>
 
-            <TableCell>
-              <Badge variant={row.active ? "default" : "secondary"}>
-                {row.active ? "Ativa" : "Inativa"}
-              </Badge>
-            </TableCell>
+              <td className="px-4 py-3">
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" size="sm" onClick={() => props.onEdit(row)}>
+                    Editar
+                  </Button>
 
-            <TableCell>
-              <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" onClick={() => props.onEdit(row)}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Editar
-                </Button>
-
-                <Button size="sm" variant="outline" onClick={() => props.onDelete(row)}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Excluir
-                </Button>
-              </div>
-            </TableCell>
-          </TableRow>
-        ))}
-      </TableBody>
-    </Table>
+                  <Button variant="destructive" size="sm" onClick={() => props.onRemove(row)}>
+                    Excluir
+                  </Button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

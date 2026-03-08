@@ -1,62 +1,90 @@
 import { z } from "zod";
+import type { CarrierFormValues } from "./carriers.types";
 
 export const carrierFormSchema = z.object({
-  code: z.string().trim().max(30).optional().or(z.literal("")),
+  code: z.string().trim().max(30),
   name: z.string().trim().min(2, "Informe o nome"),
-  legalName: z.string().trim().max(200).optional().or(z.literal("")),
-  document: z.string().trim().max(20).optional().or(z.literal("")),
-  stateRegistration: z.string().trim().max(30).optional().or(z.literal("")),
-  rntrc: z.string().trim().max(30).optional().or(z.literal("")),
+  legal_name: z.string().trim().max(200),
+  document: z.string().trim().max(20),
+  state_registration: z.string().trim().max(30),
+  rntrc: z.string().trim().max(30),
 
-  email: z.string().trim().max(150).optional().or(z.literal("")),
-  phone: z.string().trim().max(30).optional().or(z.literal("")),
-  contactName: z.string().trim().max(120).optional().or(z.literal("")),
+  email: z.string().trim().max(150),
+  phone: z.string().trim().max(30),
+  contact_name: z.string().trim().max(120),
 
-  zipCode: z.string().trim().max(12).optional().or(z.literal("")),
-  street: z.string().trim().max(150).optional().or(z.literal("")),
-  streetNumber: z.string().trim().max(30).optional().or(z.literal("")),
-  complement: z.string().trim().max(80).optional().or(z.literal("")),
-  neighborhood: z.string().trim().max(80).optional().or(z.literal("")),
-  city: z.string().trim().max(80).optional().or(z.literal("")),
-  state: z.string().trim().max(2).optional().or(z.literal("")),
+  zip_code: z.string().trim().max(12),
+  street: z.string().trim().max(150),
+  street_number: z.string().trim().max(30),
+  complement: z.string().trim().max(80),
+  neighborhood: z.string().trim().max(80),
+  city: z.string().trim().max(80),
+  state: z.string().trim().max(2),
 
-  vehicleType: z.string().trim().max(30).optional().or(z.literal("")),
-  plate: z.string().trim().max(10).optional().or(z.literal("")),
-  notes: z.string().trim().max(500).optional().or(z.literal("")),
+  vehicle_type: z.string().trim().max(30),
+  plate: z.string().trim().max(10),
+
+  notes: z.string().trim().max(500),
   active: z.boolean(),
 });
 
-export type CarrierFormValues = z.infer<typeof carrierFormSchema>;
-
-function nullable(v?: string) {
-  const x = v?.trim();
-  return x ? x : null;
+function toNull(value: string) {
+  const v = value?.trim();
+  return v ? v : null;
 }
 
-export function normalizeCarrierPayload(data: CarrierFormValues) {
+export function normalizeCarrierPayload(values: CarrierFormValues) {
   return {
-    code: nullable(data.code),
-    name: data.name.trim(),
-    legalName: nullable(data.legalName),
-    document: nullable(data.document),
-    stateRegistration: nullable(data.stateRegistration),
-    rntrc: nullable(data.rntrc),
+    code: toNull(values.code),
+    name: values.name.trim(),
+    legalName: toNull(values.legal_name),
+    document: toNull(values.document),
+    stateRegistration: toNull(values.state_registration),
+    rntrc: toNull(values.rntrc),
 
-    email: nullable(data.email),
-    phone: nullable(data.phone),
-    contactName: nullable(data.contactName),
+    email: toNull(values.email),
+    phone: toNull(values.phone),
+    contactName: toNull(values.contact_name),
 
-    zipCode: nullable(data.zipCode),
-    street: nullable(data.street),
-    streetNumber: nullable(data.streetNumber),
-    complement: nullable(data.complement),
-    neighborhood: nullable(data.neighborhood),
-    city: nullable(data.city),
-    state: nullable(data.state),
+    zipCode: toNull(values.zip_code),
+    street: toNull(values.street),
+    streetNumber: toNull(values.street_number),
+    complement: toNull(values.complement),
+    neighborhood: toNull(values.neighborhood),
+    city: toNull(values.city),
+    state: toNull(values.state),
 
-    vehicleType: nullable(data.vehicleType),
-    plate: nullable(data.plate),
-    notes: nullable(data.notes),
-    active: data.active,
+    vehicleType: toNull(values.vehicle_type),
+    plate: toNull(values.plate),
+
+    notes: toNull(values.notes),
+    active: values.active,
   };
 }
+
+export const EMPTY_CARRIER_FORM: CarrierFormValues = {
+  code: "",
+  name: "",
+  legal_name: "",
+  document: "",
+  state_registration: "",
+  rntrc: "",
+
+  email: "",
+  phone: "",
+  contact_name: "",
+
+  zip_code: "",
+  street: "",
+  street_number: "",
+  complement: "",
+  neighborhood: "",
+  city: "",
+  state: "",
+
+  vehicle_type: "",
+  plate: "",
+
+  notes: "",
+  active: true,
+};

@@ -118,9 +118,9 @@ Evoluções:
 
 Muito importante para logística.
 
-* [ ] tabela transportadoras
-* [ ] backend
-* [ ] frontend
+* [x] tabela transportadoras
+* [x] backend
+* [-] frontend em andamento merece melhor atenção
 * [ ] vínculo com pedidos
 * [ ] vínculo com NF
 

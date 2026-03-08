@@ -1,14 +1,18 @@
 import { api } from "@/shared/api/client";
 import type { Carrier } from "./carriers.types";
 
-export async function listCarriers(params?: { q?: string; active?: "1" | "0" }) {
-  const search = new URLSearchParams();
+export async function listCarriers(params?: {
+  q?: string;
+  active?: "1" | "0";
+}) {
+  const qs = new URLSearchParams();
 
-  if (params?.q?.trim()) search.set("q", params.q.trim());
-  if (params?.active) search.set("active", params.active);
+  if (params?.q?.trim()) qs.set("q", params.q.trim());
+  if (params?.active) qs.set("active", params.active);
 
-  const suffix = search.toString() ? `?${search.toString()}` : "";
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
   const data = await api(`/carriers${suffix}`, { auth: true });
+
   return Array.isArray(data) ? (data as Carrier[]) : [];
 }
 
