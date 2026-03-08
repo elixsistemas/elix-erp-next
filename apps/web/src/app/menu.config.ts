@@ -215,6 +215,13 @@ export const MENU_CONFIG: MenuItem[] = [
         perm: "suppliers.read",
       },
       {
+        key: "carriers",
+        label: "Transportadoras",
+        path: "/cadastros/transportadoras",
+        module: "cadastros.carriers",
+        perm: "carriers.read",
+      },
+      {
         key: "products",
         label: "Produtos",
         path: "/cadastros/produtos",

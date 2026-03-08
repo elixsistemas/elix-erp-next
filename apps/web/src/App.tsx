@@ -14,6 +14,7 @@ import Dashboard from "@/pages/dashboard/DashboardPage";
 import CompanyPage from "@/pages/cadastros/empresa/CompanyPage";
 import CustomersPage from "@/pages/cadastros/clientes/CustomersPage";
 import SuppliersPage from "@/pages/cadastros/fornecedores/SuppliersPage";
+import CarriersPage from "@/pages/cadastros/transportadoras/CarriersPage";
 import ProductsPage from "@/pages/cadastros/produtos/ProductsPage";
 import FiscalPage from "@/pages/cadastros/fiscal/FiscalPage";
 import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPage";
@@ -95,6 +96,16 @@ function AppBoot() {
                   element={
                     <RequireAccess perm="suppliers.read">
                       <SuppliersPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="cadastros.carriers" />}>
+              <Route
+                path="/cadastros/transportadoras"
+                element={
+                  <RequireAccess perm="carriers.read">
+                    <CarriersPage />
                   </RequireAccess>
                 }
               />
