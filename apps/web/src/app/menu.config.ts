@@ -116,6 +116,13 @@ export const MENU_CONFIG: MenuItem[] = [
         perm: "chart_of_accounts.read",
       },
       {
+        key: "cost_centers",
+        label: "Centros de Custo",
+        path: "/financeiro/centros-custo",
+        module: "finance.cost_centers",
+        perm: "cost_centers.read",
+      },
+      {
         key: "receivables",
         label: "Contas a receber",
         path: "/finance/receivables",

@@ -39,6 +39,7 @@ import VendaDetailsPage from "@/pages/comercial/vendas/VendaDetailsPage";
 import VendaPrintPage from "@/pages/comercial/vendas/VendaPrintPage";
 
 import ChartOfAccountsPage from "@/pages/financeiro/plano-contas/ChartOfAccountsPage";
+import CostCentersPage from "@/pages/financeiro/centros-custo/CostCentersPage";
 
 import RolesPage from "@/pages/admin/RolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
@@ -304,6 +305,16 @@ function AppBoot() {
                 element={
                   <RequireAccess perm="chart_of_accounts.read">
                     <ChartOfAccountsPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="finance.cost_centers" />}>
+              <Route
+                path="/financeiro/centros-custo"
+                element={
+                  <RequireAccess perm="cost_centers.read">
+                    <CostCentersPage />
                   </RequireAccess>
                 }
               />

@@ -196,9 +196,13 @@ Opções:
 
 Fundamental para financeiro e relatórios.
 
-* [ ] tabela centros_custo
-* [ ] backend
-* [ ] frontend
+* [x] tabela cost_centers
+* [x] CRUD backend
+* [x] CRUD frontend
+* [x] permissões RBAC
+* [x] menu
+* [x] filtros por busca/status
+* [x] documentação
 
 ---
 
@@ -827,10 +831,10 @@ Perfis fiscais alimentam:
 ### Etapa 1 — completar cadastros mestre faltantes
 
 1. Transportadoras
-2. Categorias de produto
-3. Marcas
-4. Plano de contas
-5. Centros de custo
+2. Plano de contas
+3. Centros de custo
+4. Marcas
+5. Categorias de produto
 6. Serviços
 
 ### Etapa 2 — consolidar cadastros avançados
