@@ -23,6 +23,8 @@ import { companyModulesRoutes } from "./modules/company_modules/company_modules.
 import { paymentMethodsRoutes } from "./modules/payment_methods/payment_methods.routes";
 import { carriersRoutes } from "./modules/carriers/carriers.routes";
 import { carrierVehiclesRoutes }  from "./modules/carrier-vehicles/carrier-vehicles.routes";
+import chartOfAccountsRoutes from "@/modules/financial/chart-of-accounts/chart-of-accounts.routes";
+
 
 
 export async function routes(app: FastifyInstance) {
@@ -49,4 +51,5 @@ export async function routes(app: FastifyInstance) {
   await app.register(companyModulesRoutes);
   await app.register(paymentMethodsRoutes);
   await app.register(carriersRoutes);
+  await app.register(chartOfAccountsRoutes);
 }

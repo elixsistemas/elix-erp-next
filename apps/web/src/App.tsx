@@ -38,6 +38,8 @@ import VendasListPage from "@/pages/comercial/vendas/VendasListPage";
 import VendaDetailsPage from "@/pages/comercial/vendas/VendaDetailsPage";
 import VendaPrintPage from "@/pages/comercial/vendas/VendaPrintPage";
 
+import ChartOfAccountsPage from "@/pages/financeiro/plano-contas/ChartOfAccountsPage";
+
 import RolesPage from "@/pages/admin/RolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import CompanyModulesPage from "@/pages/admin/CompanyModulesPage";
@@ -290,6 +292,18 @@ function AppBoot() {
                 element={
                   <RequireAccess perm="sales.print">
                     <VendaPrintPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+
+            {/* Financeiro */}
+            <Route element={<RequireModule module="finance.chart_of_accounts" />}>
+              <Route
+                path="/financeiro/plano-contas"
+                element={
+                  <RequireAccess perm="chart_of_accounts.read">
+                    <ChartOfAccountsPage />
                   </RequireAccess>
                 }
               />

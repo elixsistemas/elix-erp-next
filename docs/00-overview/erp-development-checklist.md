@@ -206,10 +206,15 @@ Fundamental para financeiro e relatórios.
 
 Base do financeiro real.
 
-* [ ] tabela plano_contas
-* [ ] hierarquia contábil
-* [ ] backend
-* [ ] frontend
+* [x] tabela chart_of_accounts
+* [x] hierarquia contábil
+* [x] backend
+* [x] frontend
+* [x] permissões RBAC
+* [x] Permissões
+* [x] Menu
+* [x] hierarquia contábil (parent_id + tree API + UI em árvore)
+* [x] suporte a DRE (dre_group)
 
 ---
 
@@ -489,13 +494,13 @@ Cadastros financeiros básicos concluídos:
 
 Sugestão arquitetural:
 
-1️⃣ Plano de contas
+1️⃣ Centros de custo
 
-2️⃣ Centros de custo
+2️⃣ Categorias de produtos
 
-3️⃣ Categorias de produtos
+3️⃣ Serviços
 
-4️⃣ Serviços
+4️⃣ 
 
 5️⃣ 
 
@@ -749,11 +754,11 @@ Perfis fiscais alimentam:
 * contas bancárias
 * meios de pagamento
 * condições de pagamento
+* transportadoras
+* plano de contas
 
 ### Faixa B — prioridade estrutural alta
 
-* transportadoras
-* plano de contas
 * centros de custo
 * categorias de produto
 * marcas

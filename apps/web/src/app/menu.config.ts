@@ -109,6 +109,13 @@ export const MENU_CONFIG: MenuItem[] = [
     path: "/finance",
     children: [
       {
+        key: "chart_of_accounts",
+        label: "Plano de Contas",
+        path: "/financeiro/plano-contas",
+        module: "finance.chart_of_accounts",
+        perm: "chart_of_accounts.read",
+      },
+      {
         key: "receivables",
         label: "Contas a receber",
         path: "/finance/receivables",
