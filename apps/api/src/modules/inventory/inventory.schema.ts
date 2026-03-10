@@ -3,7 +3,13 @@ import { z } from "zod";
 /**
  * Legado (mantemos pra compatibilidade com a tabela/CK e telas atuais)
  */
-export const MovementTypeSchema = z.enum(["IN", "OUT", "ADJUST_POS", "ADJUST_NEG"]);
+export const MovementTypeSchema = z.enum([
+  "IN",
+  "OUT",
+  "ADJUST_POS",
+  "ADJUST_NEG",
+]);
+
 export type MovementType = z.infer<typeof MovementTypeSchema>;
 
 /**
@@ -18,6 +24,7 @@ export const MovementReasonSchema = z.enum([
   "TRANSFER",
   "RETURN",
 ]);
+
 export type MovementReason = z.infer<typeof MovementReasonSchema>;
 
 /**
@@ -35,15 +42,16 @@ export const InventoryMovementCreateSchema = z.object({
   sourceId: z.coerce.number().int().positive().optional(),
 
   // novos (não quebram chamadas antigas)
-  sourceType: z.string().trim().min(1).optional(), // ex: "SALE", "XML", "MANUAL"
+  sourceType: z.string().trim().min(1).optional(),
   reason: MovementReasonSchema.optional(),
   idempotencyKey: z.string().trim().min(8).max(120).optional(),
-  occurredAt: z.string().datetime().optional(), // ISO 8601
-
+  occurredAt: z.string().datetime().optional(),
   note: z.string().trim().max(255).optional().nullable(),
 });
 
-export type InventoryMovementCreate = z.infer<typeof InventoryMovementCreateSchema>;
+export type InventoryMovementCreate = z.infer<
+  typeof InventoryMovementCreateSchema
+>;
 
 /**
  * Query
@@ -56,11 +64,15 @@ export const InventoryMovementQuerySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
 });
 
-export type InventoryMovementQuery = z.infer<typeof InventoryMovementQuerySchema>;
+export type InventoryMovementQuery = z.infer<
+  typeof InventoryMovementQuerySchema
+>;
 
-// opcional (para tela de saldo atual)
+/**
+ * Query do saldo atual
+ */
 export const InventoryStockQuerySchema = z.object({
-  productId: z.coerce.number().int().positive().optional(),
+  productId: z.coerce.number().int().positive(),
 });
 
 export type InventoryStockQuery = z.infer<typeof InventoryStockQuerySchema>;

@@ -347,7 +347,7 @@ Evolução:
 
 ## Saldo de estoque
 
-* [ ] cálculo consolidado
+* [x] Saldo de estoque → cálculo consolidado
 
 ---
 

@@ -7,18 +7,23 @@ export async function inventoryRoutes(app: FastifyInstance) {
   app.register(
     async function (app) {
       app.addHook("preHandler", requireModule("inventory.stock"));
+
       app.get(
         "/",
-        { preHandler: [requireAuth, requirePermission("inventory.read")] },
-        controller.listStock
+        {
+          preHandler: [requireAuth, requirePermission("inventory.read")],
+        },
+        controller.listStock,
       );
 
       app.get(
         "/stock",
-        { preHandler: [requireAuth, requirePermission("inventory.read")] },
-        controller.stock
+        {
+          preHandler: [requireAuth, requirePermission("inventory.read")],
+        },
+        controller.stock,
       );
     },
-    { prefix: "/inventory" }
+    { prefix: "/inventory" },
   );
 }

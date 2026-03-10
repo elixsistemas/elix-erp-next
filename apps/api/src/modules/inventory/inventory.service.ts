@@ -1,4 +1,3 @@
-// apps/api/src/modules/inventory/inventory.service.ts
 import * as repo from "./inventory.repository";
 
 export async function getStock(companyId: number, productId: number) {
