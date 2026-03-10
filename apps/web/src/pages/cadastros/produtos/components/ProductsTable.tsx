@@ -8,9 +8,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { Product } from "../products.types";
 
-const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+import type { Product, ProductKind } from "../products.types";
+
+const brl = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+});
 
 type Props = {
   rows: Product[];
@@ -19,35 +23,70 @@ type Props = {
   onRemove: (row: Product) => void;
 };
 
-export function ProductsTable({ rows, loading, onEdit, onRemove }: Props) {
+function kindLabel(kind: ProductKind) {
+  switch (kind) {
+    case "service":
+      return "Serviço";
+    case "consumable":
+      return "Consumível";
+    case "kit":
+      return "Kit";
+    default:
+      return "Produto";
+  }
+}
+
+function kindVariant(kind: ProductKind) {
+  switch (kind) {
+    case "service":
+      return "secondary" as const;
+    case "consumable":
+      return "outline" as const;
+    case "kit":
+      return "default" as const;
+    default:
+      return "secondary" as const;
+  }
+}
+
+export function ProductsTable({
+  rows,
+  loading,
+  onEdit,
+  onRemove,
+}: Props) {
   return (
-    <div className="border rounded-lg overflow-hidden">
+    <div className="rounded-xl border bg-card shadow-sm">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead style={{ width: 90 }}>ID</TableHead>
-            <TableHead>Produto</TableHead>
-            <TableHead style={{ width: 130 }}>Tipo</TableHead>
-            <TableHead style={{ width: 180 }}>NCM</TableHead>
-            <TableHead style={{ width: 160 }}>Preço</TableHead>
-            <TableHead style={{ width: 140 }}>Status</TableHead>
-            <TableHead style={{ width: 180 }} className="text-right">
-              Ações
-            </TableHead>
+            <TableHead className="w-[80px]">ID</TableHead>
+            <TableHead>Item</TableHead>
+            <TableHead className="w-[130px]">Tipo</TableHead>
+            <TableHead className="w-[180px]">NCM</TableHead>
+            <TableHead className="w-[140px]">Preço</TableHead>
+            <TableHead className="w-[120px]">Status</TableHead>
+            <TableHead className="w-[180px] text-right">Ações</TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
           {loading ? (
             <TableRow>
-              <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+              <TableCell
+                colSpan={7}
+                className="text-center text-muted-foreground"
+              >
                 Carregando...
               </TableCell>
             </TableRow>
           ) : rows.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                Nenhum produto encontrado.
+              <TableCell
+                colSpan={7}
+                className="text-center text-muted-foreground"
+              >
+                Nenhum item encontrado.
               </TableCell>
             </TableRow>
           ) : (
@@ -56,57 +95,67 @@ export function ProductsTable({ rows, loading, onEdit, onRemove }: Props) {
 
               return (
                 <TableRow key={r.id}>
-                  <TableCell>#{r.id}</TableCell>
-                  <TableCell>
-                    {r.ncm ? (
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-sm">{r.ncm}</span>
-
-                        {(r as any).ncm_id ? (
-                          <Badge className="bg-green-100 text-green-700 hover:bg-green-100">Vinculado</Badge>
-                        ) : (
-                          <Badge className="bg-yellow-100 text-yellow-700 hover:bg-yellow-100">Manual</Badge>
-                        )}
-                      </div>
-                    ) : (
-                      <Badge variant="secondary">Não informado</Badge>
-                    )}
-                  </TableCell>
+                  <TableCell className="font-mono">#{r.id}</TableCell>
 
                   <TableCell>
                     <div className="font-medium">{r.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {r.sku ? `SKU: ${r.sku}` : "—"} {r.ean ? ` • EAN: ${r.ean}` : ""}
+                      {r.sku ? `SKU: ${r.sku}` : "—"}
+                      {r.ean ? ` • EAN: ${r.ean}` : ""}
                     </div>
                   </TableCell>
 
                   <TableCell>
-                    {r.kind === "service" ? (
-                      <Badge variant="secondary">Serviço</Badge>
-                    ) : (
-                      <Badge variant="outline">Produto</Badge>
-                    )}
-                  </TableCell>
-
-                  <TableCell className="font-mono tabular-nums">
-                    {brl.format(Number(r.price ?? 0))}
+                    <Badge variant={kindVariant(r.kind)}>
+                      {kindLabel(r.kind)}
+                    </Badge>
                   </TableCell>
 
                   <TableCell>
-                    {active ? <Badge>Ativo</Badge> : <Badge variant="destructive">Inativo</Badge>}
+                    {r.ncm ? (
+                      <div className="space-y-1">
+                        <div className="font-mono text-xs">{r.ncm}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {(r as any).ncm_id ? "Vinculado" : "Manual"}
+                        </div>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        Não informado
+                      </span>
+                    )}
+                  </TableCell>
+
+                  <TableCell>{brl.format(Number(r.price ?? 0))}</TableCell>
+
+                  <TableCell>
+                    <Badge variant={active ? "default" : "outline"}>
+                      {active ? "Ativo" : "Inativo"}
+                    </Badge>
                   </TableCell>
 
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
-                      <Button variant="outline" size="sm" onClick={() => onEdit(r)}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEdit(r)}
+                      >
                         Editar
                       </Button>
+
                       <Button
-                        variant="destructive"
+                        type="button"
+                        variant="outline"
                         size="sm"
                         onClick={() => onRemove(r)}
                         disabled={!active}
-                        title={!active ? "Produto já está inativo" : "Desativar"}
+                        title={
+                          !active
+                            ? "Item já está inativo"
+                            : "Desativar"
+                        }
                       >
                         Desativar
                       </Button>

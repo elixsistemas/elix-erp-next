@@ -7,7 +7,7 @@ export default function ProductsPage() {
   const vm = useProducts();
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="space-y-4">
       <ProductsToolbar
         q={vm.q}
         onChangeQ={vm.setQ}
@@ -29,10 +29,10 @@ export default function ProductsPage() {
 
       <ProductSheet
         open={vm.open}
+        onOpenChange={vm.setOpen}
         mode={vm.mode}
         saving={vm.saving}
         initialData={vm.editing}
-        onOpenChange={vm.setOpen}
         onSubmit={vm.onSubmit}
       />
     </div>

@@ -151,6 +151,8 @@ Evoluções necessárias:
 * [ ] listas de preço
 * [ ] anexos
 * [ ] política por empresa
+* [x] decisão arquitetural de serviços: catálogo unificado via products.kind
+* [x] suporte inicial a kind: product, service, consumable, kit
 
 ---
 
@@ -163,7 +165,8 @@ Opções:
 1️⃣ tabela própria
 2️⃣ products.kind
 
-* [ ] decisão arquitetural
+* [x] decisão tomada: reutilização de products.kind
+* [ ] tela dedicada por filtro kind=service
 * [ ] backend
 * [ ] frontend
 

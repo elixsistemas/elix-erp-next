@@ -1,4 +1,8 @@
-export type ProductKind = "product" | "service";
+export type ProductKind =
+  | "product"
+  | "service"
+  | "consumable"
+  | "kit";
 
 export type Product = {
   id: number;
@@ -6,24 +10,28 @@ export type Product = {
 
   name: string;
   sku?: string | null;
-
   kind: ProductKind;
 
   description?: string | null;
+
   uom?: string | null;
   uom_id?: number | null;
 
   ncm?: string | null;
   ncm_id?: number | null;
+
   ean?: string | null;
+
   cest?: string | null;
   cest_id?: number | null;
+
   fiscal_json?: string | null;
 
   price: number;
   cost: number;
 
   track_inventory?: boolean | null;
+
   active: boolean;
 
   image_url?: string | null;
@@ -43,15 +51,17 @@ export type ProductCreate = {
   kind?: ProductKind;
 
   description?: string | null;
+
   uom?: string | null;
-  uom_id?: number | null;     
+  uom_id?: number | null;
 
   ncm?: string | null;
   ncm_id?: number | null;
+
   ean?: string | null;
 
   cest?: string | null;
-  cest_id?: number | null;       
+  cest_id?: number | null;
 
   fiscal_json?: string | null;
 
