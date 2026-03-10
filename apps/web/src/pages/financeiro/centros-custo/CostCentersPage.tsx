@@ -16,7 +16,7 @@ export default function CostCentersPage() {
     auth.hasModule?.("finance.cost_centers") !== false &&
     auth.hasPermission?.("cost_centers.read") !== false;
 
-  const canCreate = auth.hasPermission?.("cost_centers.create") !== false;
+  //const canCreate = auth.hasPermission?.("cost_centers.create") !== false;
   const canUpdate = auth.hasPermission?.("cost_centers.update") !== false;
   const canDelete = auth.hasPermission?.("cost_centers.delete") !== false;
 

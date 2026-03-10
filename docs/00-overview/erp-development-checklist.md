@@ -143,7 +143,7 @@ Muito importante para logística.
 
 Evoluções necessárias:
 
-* [ ] categorias
+* [x] categorias
 * [ ] marcas
 * [ ] variantes
 * [ ] atributos
@@ -178,9 +178,9 @@ Opções:
 
 ## Categorias de produto
 
-* [ ] tabela categorias
-* [ ] backend
-* [ ] frontend
+* [x] tabela product_categories
+* [x] backend
+* [x] frontend
 
 ---
 
@@ -498,11 +498,11 @@ Cadastros financeiros básicos concluídos:
 
 Sugestão arquitetural:
 
-1️⃣ Centros de custo
+1️⃣ Categorias de produtos
 
-2️⃣ Categorias de produtos
+2️⃣ Serviços
 
-3️⃣ Serviços
+3️⃣ 
 
 4️⃣ 
 

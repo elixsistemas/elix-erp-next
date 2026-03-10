@@ -246,6 +246,13 @@ export const MENU_CONFIG: MenuItem[] = [
         end: true,
       },
       {
+        key: "product_categories",
+        label: "Categorias de Produto",
+        path: "/cadastros/categorias-produto",
+        module: "cadastros.product_categories",
+        perm: "product_categories.read",
+      },
+      {
         key: "products",
         label: "Produtos",
         path: "/cadastros/produtos",

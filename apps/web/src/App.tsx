@@ -17,6 +17,7 @@ import SuppliersPage from "@/pages/cadastros/fornecedores/SuppliersPage";
 import CarriersPage from "@/pages/cadastros/transportadoras/CarriersPage";
 import CarrierVehiclesPage from "@/pages/cadastros/transportadoras-veiculos/CarrierVehiclesPage";
 import ProductsPage from "@/pages/cadastros/produtos/ProductsPage";
+import ProductCategoriesPage from "@/pages/cadastros/categorias-produto/ProductCategoriesPage";
 import FiscalPage from "@/pages/cadastros/fiscal/FiscalPage";
 import BankAccountsPage from "@/pages/cadastros/contas-bancarias/BankAccountsPage";
 import PaymentMethodsPage from "@/pages/cadastros/meios-pagamento/PaymentMethodsPage";
@@ -94,6 +95,17 @@ function AppBoot() {
                 }
               />
             </Route>
+            <Route element={<RequireModule module="cadastros.product_categories" />}>
+              <Route
+                path="/cadastros/categorias-produto"
+                element={
+                  <RequireAccess perm="product_categories.read">
+                    <ProductCategoriesPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+
               <Route element={<RequireModule module="cadastros.suppliers" />}>
                 <Route
                   path="/cadastros/fornecedores"
