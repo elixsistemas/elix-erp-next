@@ -44,6 +44,9 @@ import VendaPrintPage from "@/pages/comercial/vendas/VendaPrintPage";
 
 import ChartOfAccountsPage from "@/pages/financeiro/plano-contas/ChartOfAccountsPage";
 import CostCentersPage from "@/pages/financeiro/centros-custo/CostCentersPage";
+import AccountsPayablePage from "@/pages/financeiro/contas-pagar/AccountsPayablePage";
+import AccountsPayableFormPage from "@/pages/financeiro/contas-pagar/AccountsPayableFormPage";
+import AccountsPayableDetailsPage from "@/pages/financeiro/contas-pagar/AccountsPayableDetailsPage";
 
 import RolesPage from "@/pages/admin/RolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
@@ -363,6 +366,43 @@ function AppBoot() {
                 }
               />
             </Route>
+            <Route element={<RequireModule module="finance.payables" />}>
+              <Route
+                path="/financeiro/contas-pagar"
+                element={
+                  <RequireAccess perm="payables.read">
+                    <AccountsPayablePage />
+                  </RequireAccess>
+                }
+              />
+
+              <Route
+                path="/financeiro/contas-pagar/nova"
+                element={
+                  <RequireAccess perm="payables.create">
+                    <AccountsPayableFormPage />
+                  </RequireAccess>
+                }
+              />
+
+              <Route
+                path="/financeiro/contas-pagar/:id"
+                element={
+                  <RequireAccess perm="payables.read">
+                    <AccountsPayableDetailsPage />
+                  </RequireAccess>
+                }
+              />
+
+              <Route
+                path="/financeiro/contas-pagar/:id/editar"
+                element={
+                  <RequireAccess perm="payables.update">
+                    <AccountsPayableFormPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>          
 
             {/* Admin */}
             <Route element={<RequireModule module="admin.settings" />}>

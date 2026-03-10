@@ -132,7 +132,7 @@ export const MENU_CONFIG: MenuItem[] = [
       {
         key: "payables",
         label: "Contas a pagar",
-        path: "/finance/payables",
+        path: "/financeiro/contas-pagar",
         module: "finance.payables",
         perm: "payables.read",
       },

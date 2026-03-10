@@ -422,9 +422,11 @@ Evolução:
 
 ## Contas a pagar
 
-* [ ] tabela
-* [ ] backend
-* [ ] frontend
+* [x] tabela
+* [x] backend
+* [x] frontend
+* [x] menu
+* [x] docs
 
 ---
 

@@ -100,3 +100,7 @@ commercial.sales
 Exemplo errado:
 
 sales.create.modal
+
+
+| finance.payables | Financeiro | Contas a pagar | Gestão de títulos e obrigações financeiras com fornecedores |
+
