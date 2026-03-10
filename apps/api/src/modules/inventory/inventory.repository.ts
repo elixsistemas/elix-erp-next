@@ -52,10 +52,6 @@ export async function ensureProductBelongsToCompany(
   return !!result.recordset[0];
 }
 
-/**
- * ÚNICO caminho de escrita
- * Grava movimento chamando a SP (transacional e com regra de estoque).
- */
 export async function createMovement(
   companyId: number,
   data: InventoryMovementCreate,
@@ -78,9 +74,6 @@ export async function createMovement(
     .execute("dbo.sp_inventory_move");
 }
 
-/**
- * Lista de movimentos (paginada)
- */
 export async function listMovements(
   companyId: number,
   query: InventoryMovementQuery,
@@ -122,10 +115,6 @@ export async function listMovements(
   return result.recordset;
 }
 
-/**
- * Saldo atual de um produto
- * Lê da view consolidada.
- */
 export async function getStock(
   companyId: number,
   productId: number,
@@ -146,10 +135,6 @@ export async function getStock(
   return Number(result.recordset[0]?.on_hand ?? 0);
 }
 
-/**
- * Saldo por produto (pra tela “Estoque atual”)
- * Lê da view consolidada.
- */
 export async function listStock(
   companyId: number,
 ): Promise<InventoryStockRow[]> {
