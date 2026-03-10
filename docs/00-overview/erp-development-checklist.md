@@ -174,9 +174,9 @@ Opções:
 2️⃣ products.kind
 
 * [x] decisão tomada: reutilização de products.kind
-* [ ] tela dedicada por filtro kind=service
-* [ ] backend
-* [ ] frontend
+* [x] tela dedicada por filtro kind=service
+* [x] backend
+* [x] frontend
 
 ---
 
@@ -509,15 +509,15 @@ Cadastros financeiros básicos concluídos:
 
 Sugestão arquitetural:
 
-1️⃣ Serviços
+1️⃣ Saldo de estoque
 
-2️⃣ 
+2️⃣ Contas a pagar
 
-3️⃣ 
+3️⃣ Serviços tomados / compras
 
-4️⃣ 
+4️⃣ Reserva de estoque em pedidos
 
-5️⃣ 
+5️⃣ Relatórios comerciais
 
 Depois disso o ERP entra em **nível estrutural equivalente a ERPs maduros**.
 
