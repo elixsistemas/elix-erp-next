@@ -267,6 +267,13 @@ export const MENU_CONFIG: MenuItem[] = [
         perm: "products.read",
       },
       {
+        key: "product_kits",
+        label: "Composição de Kits",
+        path: "/cadastros/composicao-kits",
+        module: "cadastros.product_kits",
+        perm: "product_kits.read",
+      },
+      {
         key: "services",
         label: "Serviços",
         path: "/cadastros/servicos",

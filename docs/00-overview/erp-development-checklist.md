@@ -145,6 +145,9 @@ Evoluções necessárias:
 
 * [x] categorias
 * [x] marcas
+* [x] catálogo unificado por kind
+* [x] tipos: product, service, consumable, kit
+* [x] composição de kits
 * [ ] variantes
 * [ ] atributos
 * [ ] múltiplos códigos de barras
@@ -153,6 +156,11 @@ Evoluções necessárias:
 * [ ] política por empresa
 * [x] decisão arquitetural de serviços: catálogo unificado via products.kind
 * [x] suporte inicial a kind: product, service, consumable, kit
+
+## Composição de Kits
+* [x] tabela product_kit_items
+* [x] backend
+* [x] frontend
 
 ---
 
