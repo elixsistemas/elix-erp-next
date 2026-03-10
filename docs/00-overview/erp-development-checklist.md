@@ -144,7 +144,7 @@ Muito importante para logística.
 Evoluções necessárias:
 
 * [x] categorias
-* [ ] marcas
+* [x] marcas
 * [ ] variantes
 * [ ] atributos
 * [ ] múltiplos códigos de barras
@@ -186,9 +186,9 @@ Opções:
 
 ## Marcas
 
-* [ ] tabela marcas
-* [ ] backend
-* [ ] frontend
+* [x] tabela brands
+* [x] backend
+* [x] frontend
 
 ---
 
@@ -498,9 +498,9 @@ Cadastros financeiros básicos concluídos:
 
 Sugestão arquitetural:
 
-1️⃣ Categorias de produtos
+1️⃣ Serviços
 
-2️⃣ Serviços
+2️⃣ 
 
 3️⃣ 
 
