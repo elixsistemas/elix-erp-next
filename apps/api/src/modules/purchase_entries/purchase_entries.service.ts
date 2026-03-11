@@ -129,6 +129,7 @@ export async function importXml(companyId: number, _userId: number, input: Impor
 
   const rawIssueDate = getText(ide?.dhEmi) || getText(ide?.dEmi);
   const normalizedIssueDate = rawIssueDate ? new Date(rawIssueDate) : null;
+
   if (rawIssueDate && (!normalizedIssueDate || Number.isNaN(normalizedIssueDate.getTime()))) {
     throw new Error("Data de emissão inválida no XML.");
   }

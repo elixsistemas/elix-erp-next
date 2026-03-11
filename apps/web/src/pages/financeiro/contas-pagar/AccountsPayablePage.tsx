@@ -123,6 +123,7 @@ export default function AccountsPayablePage() {
                 <th className="px-4 py-3">Descrição</th>
                 <th className="px-4 py-3">Emissão</th>
                 <th className="px-4 py-3">Vencimento</th>
+                <th className="px-4 py-3">Parcela</th>
                 <th className="px-4 py-3">Valor</th>
                 <th className="px-4 py-3">Saldo</th>
                 <th className="px-4 py-3">Status</th>
@@ -132,13 +133,13 @@ export default function AccountsPayablePage() {
             <tbody>
               {ap.loading ? (
                 <tr>
-                  <td className="px-4 py-6 text-muted-foreground" colSpan={9}>
+                  <td className="px-4 py-6 text-muted-foreground" colSpan={10}>
                     Carregando...
                   </td>
                 </tr>
               ) : ap.rows.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-6 text-muted-foreground" colSpan={9}>
+                  <td className="px-4 py-6 text-muted-foreground" colSpan={10}>
                     Nenhum título encontrado.
                   </td>
                 </tr>
@@ -150,6 +151,11 @@ export default function AccountsPayablePage() {
                     <td className="px-4 py-3">{row.description}</td>
                     <td className="px-4 py-3">{row.issue_date}</td>
                     <td className="px-4 py-3">{row.due_date}</td>
+                    <td className="px-4 py-3">
+                      {row.installment_no && row.installment_count
+                        ? `${row.installment_no}/${row.installment_count}`
+                        : "—"}
+                    </td>
                     <td className="px-4 py-3">{money(Number(row.amount))}</td>
                     <td className="px-4 py-3">{money(Number(row.open_amount))}</td>
                     <td className="px-4 py-3">

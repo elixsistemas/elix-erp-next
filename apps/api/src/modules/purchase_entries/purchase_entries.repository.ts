@@ -146,11 +146,9 @@ export function hashXml(xmlContent: string) {
   return createHash("sha256").update(xmlContent, "utf8").digest("hex");
 }
 
-export async function findSupplierByDocument(
-  companyId: number,
-  document: string | null,
-) {
+export async function findSupplierByDocument(companyId: number, document: string | null) {
   if (!document) return null;
+
   const normalized = document.replace(/\D/g, "");
   if (!normalized) return null;
 
@@ -777,8 +775,30 @@ export async function createSupplierFromImport(
     throw new Error("Importação não encontrada.");
   }
 
-  const document = (header.supplier_document ?? "").replace(/\D/g, "");
-  const supplierName = input?.overwriteName?.trim() || header.supplier_name?.trim();
+  function clean(value: string | null | undefined, maxChars: number) {
+    const v = (value ?? "").trim();
+    if (!v) return null;
+    return v.slice(0, maxChars);
+  }
+
+  function onlyDigits(value: string | null | undefined) {
+    return (value ?? "").replace(/\D/g, "");
+  }
+
+  function normalizeCountry(value: string | null | undefined) {
+    const raw = (value ?? "").trim().toUpperCase();
+    if (!raw) return "BR";
+    if (raw === "BR" || raw === "BRA" || raw === "BRASIL" || raw === "BRAZIL") {
+      return "BR";
+    }
+    return raw.slice(0, 2);
+  }
+
+  const document = onlyDigits(header.supplier_document);
+  const supplierName = clean(
+    input?.overwriteName?.trim() || header.supplier_name,
+    160,
+  );
 
   if (!supplierName) {
     throw new Error("Nome do fornecedor não encontrado no XML.");
@@ -806,27 +826,45 @@ export async function createSupplierFromImport(
 
   const personType = document.length === 14 ? "PJ" : "PF";
 
+  const ie = clean(header.supplier_ie, 30);
+
+  const billingAddressLine1 = clean(header.supplier_address_line1, 120);
+  const billingAddressLine2 = clean(header.supplier_address_line2, 120);
+  const billingDistrict = clean(header.supplier_district, 80);
+  const billingCity = clean(header.supplier_city, 80);
+  const billingState = clean(header.supplier_state, 2);
+  const billingZipCode = clean(onlyDigits(header.supplier_zip_code), 12);
+  const billingCountry = normalizeCountry(header.supplier_country);
+
+  const shippingAddressLine1 = clean(header.supplier_address_line1, 120);
+  const shippingAddressLine2 = clean(header.supplier_address_line2, 120);
+  const shippingDistrict = clean(header.supplier_district, 80);
+  const shippingCity = clean(header.supplier_city, 80);
+  const shippingState = clean(header.supplier_state, 2);
+  const shippingZipCode = clean(onlyDigits(header.supplier_zip_code), 12);
+  const shippingCountry = normalizeCountry(header.supplier_country);
+
   const created = await pool
     .request()
     .input("company_id", companyId)
     .input("name", supplierName)
     .input("person_type", personType)
-    .input("document", document || null)
-    .input("ie", header.supplier_ie ?? null)
-    .input("billing_address_line1", header.supplier_address_line1 ?? null)
-    .input("billing_address_line2", header.supplier_address_line2 ?? null)
-    .input("billing_district", header.supplier_district ?? null)
-    .input("billing_city", header.supplier_city ?? null)
-    .input("billing_state", header.supplier_state ?? null)
-    .input("billing_zip_code", header.supplier_zip_code ?? null)
-    .input("billing_country", header.supplier_country ?? "BR")
-    .input("shipping_address_line1", header.supplier_address_line1 ?? null)
-    .input("shipping_address_line2", header.supplier_address_line2 ?? null)
-    .input("shipping_district", header.supplier_district ?? null)
-    .input("shipping_city", header.supplier_city ?? null)
-    .input("shipping_state", header.supplier_state ?? null)
-    .input("shipping_zip_code", header.supplier_zip_code ?? null)
-    .input("shipping_country", header.supplier_country ?? "BR")
+    .input("document", clean(document, 20))
+    .input("ie", ie)
+    .input("billing_address_line1", billingAddressLine1)
+    .input("billing_address_line2", billingAddressLine2)
+    .input("billing_district", billingDistrict)
+    .input("billing_city", billingCity)
+    .input("billing_state", billingState)
+    .input("billing_zip_code", billingZipCode)
+    .input("billing_country", billingCountry)
+    .input("shipping_address_line1", shippingAddressLine1)
+    .input("shipping_address_line2", shippingAddressLine2)
+    .input("shipping_district", shippingDistrict)
+    .input("shipping_city", shippingCity)
+    .input("shipping_state", shippingState)
+    .input("shipping_zip_code", shippingZipCode)
+    .input("shipping_country", shippingCountry)
     .query<{ id: number }>(`
       INSERT INTO dbo.suppliers (
         company_id,
@@ -1005,7 +1043,7 @@ export async function createProductFromImportItem(
     .input("name", productName)
     .input("sku", null)
     .input("ean", item.ean ?? null)
-    .input("price", Number(item.unit_price ?? 0))
+    .input("price", 0) // não copiar custo para preço de venda
     .input("cost", Number(item.unit_price ?? 0))
     .input("kind", kind)
     .input("uom", item.uom ?? "UN")
