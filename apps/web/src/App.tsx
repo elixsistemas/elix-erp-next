@@ -42,6 +42,10 @@ import VendasListPage from "@/pages/comercial/vendas/VendasListPage";
 import VendaDetailsPage from "@/pages/comercial/vendas/VendaDetailsPage";
 import VendaPrintPage from "@/pages/comercial/vendas/VendaPrintPage";
 
+import PurchaseEntryImportsPage from "@/pages/compras/entradas/PurchaseEntryImportsPage";
+import PurchaseEntryImportPage from "@/pages/compras/entradas/PurchaseEntryImportPage";
+import PurchaseEntryImportUploadPage from "@/pages/compras/entradas/PurchaseEntryImportUploadPage";
+
 import ChartOfAccountsPage from "@/pages/financeiro/plano-contas/ChartOfAccountsPage";
 import CostCentersPage from "@/pages/financeiro/centros-custo/CostCentersPage";
 import AccountsPayablePage from "@/pages/financeiro/contas-pagar/AccountsPayablePage";
@@ -340,6 +344,34 @@ function AppBoot() {
                 element={
                   <RequireAccess perm="sales.print">
                     <VendaPrintPage />
+                  </RequireAccess>
+                }
+              />
+            </Route>
+            <Route element={<RequireModule module="commercial.purchase_entries" />}>
+              <Route
+                path="/compras/entradas"
+                element={
+                  <RequireAccess perm="purchase_entries.read">
+                    <PurchaseEntryImportsPage />
+                  </RequireAccess>
+                }
+              />
+
+              <Route
+                path="/compras/entradas/importar-xml"
+                element={
+                  <RequireAccess perm="purchase_entries.import">
+                    <PurchaseEntryImportUploadPage />
+                  </RequireAccess>
+                }
+              />
+
+              <Route
+                path="/compras/entradas/:id"
+                element={
+                  <RequireAccess perm="purchase_entries.read">
+                    <PurchaseEntryImportPage />
                   </RequireAccess>
                 }
               />

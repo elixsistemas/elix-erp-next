@@ -30,6 +30,7 @@ import { brandsRoutes } from "./modules/brands/brands.routes";
 import { productKitsRoutes } from "./modules/product-kits/product-kits.routes";
 import { servicesRoutes } from "./modules/services/services.routes";
 import { accountsPayableRoutes } from "./modules/accounts_payable/accounts_payable.routes";
+import { purchaseEntriesRoutes } from "./modules/purchase_entries/purchase_entries.routes";
 
 
 export async function routes(app: FastifyInstance) {
@@ -63,4 +64,5 @@ export async function routes(app: FastifyInstance) {
   await app.register(productKitsRoutes);
   await app.register(servicesRoutes);
   await app.register(accountsPayableRoutes);
+  await app.register(purchaseEntriesRoutes);
 }

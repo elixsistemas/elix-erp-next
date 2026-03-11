@@ -104,3 +104,5 @@ sales.create.modal
 
 | finance.payables | Financeiro | Contas a pagar | Gestão de títulos e obrigações financeiras com fornecedores |
 
+| commercial.purchase_entries | commercial | Entradas de Compra | Importação e confirmação de entradas por XML |
+

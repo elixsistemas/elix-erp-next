@@ -454,9 +454,19 @@ Evolução:
 
 Muito comum em ERPs maduros.
 
-* [ ] solicitações compra
+* [x] entradas por XML com staging
+  * [x] staging de cabeçalho
+  * [x] staging de itens
+  * [x] importação XML
+  * [x] revisão de vínculos
+  * [x] criação assistida de fornecedor
+  * [x] criação assistida de produto
+  * [x] confirmação
+  * [x] integração estoque
+  * [x] integração contas a pagar
+* [ ] solicitações de compra
 * [ ] cotações
-* [ ] pedidos compra
+* [ ] pedidos de compra
 * [ ] entrada estoque
 
 ---

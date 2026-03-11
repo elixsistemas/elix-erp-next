@@ -156,3 +156,18 @@ O `module_key` também é a base do catálogo de planos:
 - `apps/api/src/config/prehandlers.ts`
 - `docs/adr/0001-module-keys.md`
 - `docs/00-overview/domain-boundaries.md`
+
+### Entradas de compra
+- Path: `/compras/entradas`
+- Module key: `commercial.purchase_entries`
+- Permissões:
+  - `purchase_entries.read`
+  - `purchase_entries.import`
+  - `purchase_entries.update`
+  - `purchase_entries.confirm`
+  - `purchase_entries.cancel`
+- Escopo inicial:
+  - importação XML
+  - staging
+  - revisão de vínculos
+  - confirmação com geração de estoque e contas a pagar

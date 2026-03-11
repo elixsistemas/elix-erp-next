@@ -57,6 +57,13 @@ export const MENU_CONFIG: MenuItem[] = [
         module: "commercial.returns",
         perm: "returns.read",
       },
+      {
+        key: "purchase_entries",
+        label: "Entradas de compra",
+        path: "/compras/entradas",
+        module: "commercial.purchase_entries",
+        perm: "purchase_entries.read",
+      },
     ],
   },
 
