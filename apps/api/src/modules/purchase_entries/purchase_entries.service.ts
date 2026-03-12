@@ -17,8 +17,9 @@ function ensureArray<T>(value: T | T[] | undefined | null): T[] {
   return Array.isArray(value) ? value : [value];
 }
 
-function onlyDigits(value: string | null | undefined) {
-  return (value ?? "").replace(/\D/g, "");
+function onlyDigits(value: unknown) {
+  if (value === undefined || value === null) return "";
+  return String(value).replace(/\D/g, "");
 }
 
 function getText(value: any): string | null {
@@ -54,6 +55,51 @@ function extractAccessKey(parsed: any): string | null {
   return null;
 }
 
+function makeConflictError(
+  message: string,
+  code: string,
+  extra?: Record<string, unknown>,
+) {
+  const err = new Error(message) as Error & {
+    statusCode?: number;
+    code?: string;
+    importId?: number;
+    details?: Record<string, unknown>;
+  };
+
+  err.statusCode = 409;
+  err.code = code;
+
+  if (extra) {
+    Object.assign(err, extra);
+    err.details = extra;
+  }
+
+  return err;
+}
+
+function makeValidationError(
+  message: string,
+  code: string,
+  extra?: Record<string, unknown>,
+) {
+  const err = new Error(message) as Error & {
+    statusCode?: number;
+    code?: string;
+    details?: Record<string, unknown>;
+  };
+
+  err.statusCode = 422;
+  err.code = code;
+
+  if (extra) {
+    Object.assign(err, extra);
+    err.details = extra;
+  }
+
+  return err;
+}
+
 export async function importXml(companyId: number, _userId: number, input: ImportXmlInput) {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -67,27 +113,38 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   try {
     parsed = parser.parse(input.xmlContent);
   } catch {
-    throw new Error("XML inválido.");
+    throw makeValidationError("XML inválido.", "PURCHASE_ENTRY_XML_INVALID");
   }
 
   const infNFe = parsed?.nfeProc?.NFe?.infNFe ?? parsed?.NFe?.infNFe;
   if (!infNFe) {
-    throw new Error("Estrutura de NF-e não encontrada.");
+    throw makeValidationError(
+      "Estrutura de NF-e não encontrada.",
+      "PURCHASE_ENTRY_XML_STRUCTURE_INVALID",
+    );
   }
 
   const accessKey = extractAccessKey(parsed);
   if (!accessKey || accessKey.length !== 44) {
-    throw new Error("Chave de acesso não encontrada ou inválida.");
+    throw makeValidationError(
+      "Chave de acesso não encontrada ou inválida.",
+      "PURCHASE_ENTRY_XML_ACCESS_KEY_INVALID",
+    );
   }
 
   const duplicateId = await repo.existsImportByAccessKey(companyId, accessKey);
   if (duplicateId) {
-    throw new Error(`XML já importado para esta empresa. Importação #${duplicateId}.`);
+    throw makeConflictError(
+      "XML já importado para esta empresa.",
+      "PURCHASE_ENTRY_XML_DUPLICATE",
+      { importId: duplicateId, accessKey },
+    );
   }
 
   const ide = infNFe?.ide ?? {};
   const emit = infNFe?.emit ?? {};
   const enderEmit = emit?.enderEmit ?? {};
+  const dest = infNFe?.dest ?? {};
   const cobr = infNFe?.cobr ?? {};
   const dups = ensureArray(cobr?.dup);
   const det = ensureArray(infNFe?.det);
@@ -95,6 +152,38 @@ export async function importXml(companyId: number, _userId: number, input: Impor
 
   const supplierDocument =
     onlyDigits(getText(emit?.CNPJ) || getText(emit?.CPF)) || null;
+
+  const destinatarioDocumento =
+    onlyDigits(getText(dest?.CNPJ) || getText(dest?.CPF)) || null;
+
+  const companyDocumentRaw = await repo.getCompanyDocument(companyId);
+  const companyDocument = onlyDigits(companyDocumentRaw);
+
+  if (!companyDocument) {
+    throw makeValidationError(
+      "A empresa atual está sem documento cadastrado para validar o XML.",
+      "PURCHASE_ENTRY_COMPANY_DOCUMENT_MISSING",
+    );
+  }
+
+  if (!destinatarioDocumento) {
+    throw makeValidationError(
+      "Destinatário do XML não encontrado.",
+      "PURCHASE_ENTRY_XML_DEST_MISSING",
+    );
+  }
+
+  if (destinatarioDocumento !== companyDocument) {
+    throw makeConflictError(
+      "Este XML não pertence à empresa atual.",
+      "PURCHASE_ENTRY_XML_COMPANY_MISMATCH",
+      {
+        xmlDestDocument: destinatarioDocumento,
+        companyDocument,
+        accessKey,
+      },
+    );
+  }
 
   const supplierId = await repo.findSupplierByDocument(companyId, supplierDocument);
 
@@ -134,7 +223,10 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   const normalizedIssueDate = rawIssueDate ? new Date(rawIssueDate) : null;
 
   if (rawIssueDate && (!normalizedIssueDate || Number.isNaN(normalizedIssueDate.getTime()))) {
-    throw new Error("Data de emissão inválida no XML.");
+    throw makeValidationError(
+      "Data de emissão inválida no XML.",
+      "PURCHASE_ENTRY_XML_ISSUE_DATE_INVALID",
+    );
   }
 
   const installments =
@@ -180,8 +272,8 @@ export async function importXml(companyId: number, _userId: number, input: Impor
     supplierZipCode: getText(enderEmit?.CEP),
     supplierCountry: getText(enderEmit?.xPais) || "BR",
 
-    chartAccountId: 5, // Despesas
-    costCenterId: 9, // Compras
+    chartAccountId: 5,
+    costCenterId: 9,
     paymentTermId: installments.length > 1 ? 2 : 1,
 
     totalAmount: toNumber(totalIcms?.vNF),

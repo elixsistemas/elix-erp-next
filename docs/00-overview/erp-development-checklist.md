@@ -469,6 +469,33 @@ Muito comum em ERPs maduros.
 * [ ] pedidos de compra
 * [ ] entrada estoque
 
+
+## Purchase Entry / XML de Entrada
+
+- [x] Upload e parsing de XML NF-e
+- [x] Persistência em staging (`purchase_entry_imports`)
+- [x] Persistência de itens (`purchase_entry_import_items`)
+- [x] Persistência de parcelas (`purchase_entry_import_installments`)
+- [x] Detecção de duplicidade por chave de acesso
+- [x] Validação de pertencimento do XML à empresa atual
+- [x] Match automático de fornecedor por documento
+- [x] Match automático de produto por EAN/nome exato
+- [x] Criação assistida de fornecedor
+- [x] Criação assistida de produto com `ncm_id`
+- [x] Edição de itens antes da confirmação
+- [x] Edição de parcelas antes da confirmação
+- [x] Classificação financeira no staging
+- [x] Confirmação operacional da entrada
+- [x] Geração de movimentações de estoque
+- [x] Geração parcelada de contas a pagar
+- [x] Tratamento semântico de conflitos (`409`) para XML duplicado
+- [ ] Importação e vínculo de transportadora
+- [ ] Rateio avançado de frete/despesas por item
+- [ ] Política de custo médio / último custo
+- [ ] Política de markup / margem / preço sugerido
+- [ ] Entidade definitiva `purchase_entries`
+- [ ] Integração com pedido de compra
+- [ ] Three-way matching (pedido, nota, recebimento)
 ---
 
 # 7. RELATÓRIOS / BI
@@ -747,6 +774,34 @@ Dependências:
 
 * empresa
 * idealmente plano de contas
+
+---
+
+## Entrada de compras via XML com staging
+
+### Entregue
+- parser de XML NF-e com preservação de strings fiscais
+- staging de cabeçalho, itens e parcelas
+- bloqueio de duplicidade por chave de acesso
+- bloqueio de XML que não pertence à empresa atual
+- criação assistida de fornecedor
+- criação assistida de produto com validação de NCM
+- edição de itens antes da confirmação
+- edição de parcelas antes da confirmação
+- classificação financeira no staging
+- confirmação operacional
+- geração de estoque
+- geração parcelada de contas a pagar
+- tratamento de conflitos com retorno `409`
+
+### Pendências conscientes
+- importação/vínculo de transportadora
+- rateio de frete, desconto e despesas acessórias
+- política de custo médio / último custo
+- política de markup / margem / preço
+- criação da entidade definitiva `purchase_entries`
+- integração com pedido de compra
+- three-way matching
 
 ---
 

@@ -171,3 +171,21 @@ O `module_key` também é a base do catálogo de planos:
   - staging
   - revisão de vínculos
   - confirmação com geração de estoque e contas a pagar
+
+### Entrada de compras por XML
+Capacidades já implementadas:
+- importar XML de NF-e de entrada
+- validar duplicidade por empresa
+- validar destinatário do XML contra empresa logada
+- armazenar cabeçalho, itens e parcelas em staging
+- criar fornecedor a partir do XML
+- criar produto a partir do XML
+- revisar itens e parcelas antes da confirmação
+- aplicar classificação financeira antes da confirmação
+- confirmar entrada gerando estoque e contas a pagar parcelado
+
+Capacidades planejadas:
+- transportadora
+- rateios avançados
+- compra estruturada (`purchase_entries`)
+- integração com pedido de compra
