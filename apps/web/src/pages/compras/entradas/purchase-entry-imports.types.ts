@@ -33,6 +33,10 @@ export type PurchaseEntryImportRow = {
   supplier_zip_code: string | null;
   supplier_country: string | null;
 
+  chart_account_id: number | null;
+  cost_center_id: number | null;
+  payment_term_id: number | null;
+
   total_amount: number;
   products_amount: number;
   freight_amount: number;
@@ -102,4 +106,16 @@ export type ProductMini = {
   id: number;
   name: string;
   sku?: string | null;
+};
+
+export type MiniOption = {
+  id: number;
+  name: string;
+  code?: string | null;
+};
+
+export type FinancialOptions = {
+  chartAccounts: MiniOption[];
+  costCenters: MiniOption[];
+  paymentTerms: MiniOption[];
 };

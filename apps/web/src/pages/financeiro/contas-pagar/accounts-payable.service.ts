@@ -104,7 +104,7 @@ export async function listSuppliersMini(): Promise<SupplierMini[]> {
 }
 
 export async function listPaymentTermsMini(): Promise<PaymentConditionMini[]> {
-  const data = await api<any>("/api/payment-conditions");
+  const data = await api<any>("/api/payment-terms");
   const arr = Array.isArray(data) ? data : (data?.data ?? []);
   return Array.isArray(arr)
     ? arr.map((x: any) => ({ id: Number(x.id), name: String(x.name ?? "") }))
@@ -128,7 +128,7 @@ export async function listBankAccountsMini(): Promise<BankAccountMini[]> {
 }
 
 export async function listChartAccountsMini(): Promise<ChartAccountMini[]> {
-  const data = await api<any>("/api/chart-of-accounts");
+  const data = await api<any>("/api/financial/chart-of-accounts");
   const arr = Array.isArray(data) ? data : (data?.data ?? []);
   return Array.isArray(arr)
     ? arr.map((x: any) => ({ id: Number(x.id), name: String(x.name ?? "") }))

@@ -7,6 +7,9 @@ import type {
   MatchProductInput,
   MatchSupplierInput,
   PurchaseEntryListQuery,
+  UpdateImportFinancialInput,
+  UpdateImportInstallmentInput,
+  UpdateImportItemInput,
 } from "./purchase_entries.schema";
 
 function ensureArray<T>(value: T | T[] | undefined | null): T[] {
@@ -177,6 +180,10 @@ export async function importXml(companyId: number, _userId: number, input: Impor
     supplierZipCode: getText(enderEmit?.CEP),
     supplierCountry: getText(enderEmit?.xPais) || "BR",
 
+    chartAccountId: 5, // Despesas
+    costCenterId: 9, // Compras
+    paymentTermId: installments.length > 1 ? 2 : 1,
+
     totalAmount: toNumber(totalIcms?.vNF),
     productsAmount: toNumber(totalIcms?.vProd),
     freightAmount: toNumber(totalIcms?.vFrete),
@@ -205,6 +212,20 @@ export async function getImportById(companyId: number, id: number) {
   return repo.getImportById(companyId, id);
 }
 
+export async function getFinancialOptions(companyId: number) {
+  const [chartAccounts, costCenters, paymentTerms] = await Promise.all([
+    repo.listChartAccountsMini(companyId),
+    repo.listCostCentersMini(companyId),
+    repo.listPaymentTermsMini(companyId),
+  ]);
+
+  return {
+    chartAccounts,
+    costCenters,
+    paymentTerms,
+  };
+}
+
 async function refreshStatus(companyId: number, id: number) {
   const counts = await repo.getImportPendingCounts(companyId, id);
 
@@ -220,6 +241,15 @@ async function refreshStatus(companyId: number, id: number) {
   } else {
     await repo.updateImportStatus(companyId, id, "READY", "Pronto para confirmar");
   }
+}
+
+export async function updateImportFinancial(
+  companyId: number,
+  id: number,
+  input: UpdateImportFinancialInput,
+) {
+  await repo.updateImportFinancial(companyId, id, input);
+  return repo.getImportById(companyId, id);
 }
 
 export async function matchSupplier(
@@ -261,6 +291,26 @@ export async function createProductFromImportItem(
 ) {
   await repo.createProductFromImportItem(companyId, id, itemId, input);
   await refreshStatus(companyId, id);
+  return repo.getImportById(companyId, id);
+}
+
+export async function updateImportItem(
+  companyId: number,
+  id: number,
+  itemId: number,
+  input: UpdateImportItemInput,
+) {
+  await repo.updateImportItem(companyId, id, itemId, input);
+  return repo.getImportById(companyId, id);
+}
+
+export async function updateImportInstallment(
+  companyId: number,
+  id: number,
+  installmentId: number,
+  input: UpdateImportInstallmentInput,
+) {
+  await repo.updateImportInstallment(companyId, id, installmentId, input);
   return repo.getImportById(companyId, id);
 }
 

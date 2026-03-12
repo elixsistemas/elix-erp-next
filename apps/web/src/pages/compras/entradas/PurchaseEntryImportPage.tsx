@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -6,10 +6,15 @@ import {
   confirmPurchaseEntryImport,
   createProductFromImportItem,
   createSupplierFromImport,
+  getPurchaseEntryFinancialOptions,
   matchPurchaseEntryProduct,
   matchPurchaseEntrySupplier,
+  updatePurchaseEntryFinancial,
+  updatePurchaseEntryInstallment,
+  updatePurchaseEntryItem,
 } from "./purchase-entry-imports.service";
 import { usePurchaseEntryImport } from "./usePurchaseEntryImport";
+import type { FinancialOptions } from "./purchase-entry-imports.types";
 
 function money(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -43,18 +48,56 @@ export default function PurchaseEntryImportPage() {
   const id = Number(params.id);
   const st = usePurchaseEntryImport(id);
   const [busy, setBusy] = useState(false);
+  const [financialOptions, setFinancialOptions] = useState<FinancialOptions>({
+    chartAccounts: [],
+    costCenters: [],
+    paymentTerms: [],
+  });
 
-  const canConfirm = useMemo(() => {
-    if (!st.data) return false;
-    if (!st.data.header.supplier_id) return false;
-    return st.data.items.every((x) => !!x.product_id);
-  }, [st.data]);
+  useEffect(() => {
+    void getPurchaseEntryFinancialOptions().then(setFinancialOptions);
+  }, []);
+
+  const data = st.data;
+  const isLocked = data?.header.status === "CONFIRMED" || data?.header.status === "CANCELED";
+  const canConfirm =
+    !!data &&
+    !!data.header.supplier_id &&
+    data.items.every((x) => !!x.product_id);
+
+  async function reloadAll() {
+    await st.reload();
+  }
+
+  async function onUpdateFinancial(field: "chartAccountId" | "costCenterId" | "paymentTermId", value: string) {
+    if (!data) return;
+    setBusy(true);
+    try {
+      await updatePurchaseEntryFinancial(id, {
+        chartAccountId:
+          field === "chartAccountId"
+            ? value ? Number(value) : null
+            : data.header.chart_account_id,
+        costCenterId:
+          field === "costCenterId"
+            ? value ? Number(value) : null
+            : data.header.cost_center_id,
+        paymentTermId:
+          field === "paymentTermId"
+            ? value ? Number(value) : null
+            : data.header.payment_term_id,
+      });
+      await reloadAll();
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function onMatchSupplier(supplierId: number) {
     setBusy(true);
     try {
       await matchPurchaseEntrySupplier(id, supplierId);
-      await st.reload();
+      await reloadAll();
     } finally {
       setBusy(false);
     }
@@ -64,7 +107,7 @@ export default function PurchaseEntryImportPage() {
     setBusy(true);
     try {
       await createSupplierFromImport(id);
-      await st.reload();
+      await reloadAll();
     } finally {
       setBusy(false);
     }
@@ -74,7 +117,7 @@ export default function PurchaseEntryImportPage() {
     setBusy(true);
     try {
       await matchPurchaseEntryProduct(id, itemId, productId);
-      await st.reload();
+      await reloadAll();
     } finally {
       setBusy(false);
     }
@@ -87,7 +130,27 @@ export default function PurchaseEntryImportPage() {
         kind: "product",
         trackInventory: true,
       });
-      await st.reload();
+      await reloadAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUpdateItem(itemId: number, payload: { quantity?: number; unitPrice?: number; totalPrice?: number }) {
+    setBusy(true);
+    try {
+      await updatePurchaseEntryItem(id, itemId, payload);
+      await reloadAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUpdateInstallment(installmentId: number, payload: { dueDate?: string; amount?: number }) {
+    setBusy(true);
+    try {
+      await updatePurchaseEntryInstallment(id, installmentId, payload);
+      await reloadAll();
     } finally {
       setBusy(false);
     }
@@ -97,7 +160,7 @@ export default function PurchaseEntryImportPage() {
     setBusy(true);
     try {
       await confirmPurchaseEntryImport(id);
-      await st.reload();
+      await reloadAll();
     } finally {
       setBusy(false);
     }
@@ -113,12 +176,11 @@ export default function PurchaseEntryImportPage() {
     }
   }
 
-  if (st.loading || !st.data) {
+  if (st.loading || !data) {
     return <div className="text-sm text-muted-foreground">Carregando...</div>;
   }
 
-  const { header, items, installments } = st.data;
-  const isLocked = header.status === "CONFIRMED" || header.status === "CANCELED";
+  const { header, items, installments } = data;
 
   return (
     <div className="space-y-4">
@@ -150,6 +212,54 @@ export default function PurchaseEntryImportPage() {
         <div><div className="text-xs text-muted-foreground">Total</div><div className="mt-1 font-medium">{money(header.total_amount)}</div></div>
       </div>
 
+      <div className="rounded-xl border p-4 space-y-3">
+        <div className="text-sm font-medium">Classificação financeira</div>
+
+        <div className="grid gap-3 md:grid-cols-3">
+          <select
+            className="h-10 rounded-md border px-3"
+            value={header.chart_account_id ?? ""}
+            onChange={(e) => void onUpdateFinancial("chartAccountId", e.target.value)}
+            disabled={busy || !!isLocked}
+          >
+            <option value="">Plano de contas</option>
+            {financialOptions.chartAccounts.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.code ? `${x.code} - ` : ""}{x.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="h-10 rounded-md border px-3"
+            value={header.cost_center_id ?? ""}
+            onChange={(e) => void onUpdateFinancial("costCenterId", e.target.value)}
+            disabled={busy || !!isLocked}
+          >
+            <option value="">Centro de custo</option>
+            {financialOptions.costCenters.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.code ? `${x.code} - ` : ""}{x.name}
+              </option>
+            ))}
+          </select>
+
+          <select
+            className="h-10 rounded-md border px-3"
+            value={header.payment_term_id ?? ""}
+            onChange={(e) => void onUpdateFinancial("paymentTermId", e.target.value)}
+            disabled={busy || !!isLocked}
+          >
+            <option value="">Condição de pagamento</option>
+            {financialOptions.paymentTerms.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {installments.length > 0 && (
         <div className="rounded-xl border p-4 space-y-3">
           <div className="text-sm font-medium">Parcelas importadas</div>
@@ -168,8 +278,40 @@ export default function PurchaseEntryImportPage() {
                 {installments.map((inst) => (
                   <tr key={inst.id} className="border-t">
                     <td className="px-3 py-2">{inst.installment_number ?? inst.line_no}</td>
-                    <td className="px-3 py-2">{inst.due_date}</td>
-                    <td className="px-3 py-2">{money(inst.amount)}</td>
+                    <td className="px-3 py-2">
+                      {isLocked ? (
+                        inst.due_date
+                      ) : (
+                        <input
+                          type="date"
+                          className="h-9 rounded-md border px-2"
+                          defaultValue={inst.due_date}
+                          onBlur={(e) => {
+                            if (e.target.value && e.target.value !== inst.due_date) {
+                              void onUpdateInstallment(inst.id, { dueDate: e.target.value });
+                            }
+                          }}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {isLocked ? (
+                        money(inst.amount)
+                      ) : (
+                        <input
+                          type="number"
+                          step="0.01"
+                          className="h-9 rounded-md border px-2"
+                          defaultValue={Number(inst.amount)}
+                          onBlur={(e) => {
+                            const value = Number(e.target.value);
+                            if (value > 0 && value !== Number(inst.amount)) {
+                              void onUpdateInstallment(inst.id, { amount: value });
+                            }
+                          }}
+                        />
+                      )}
+                    </td>
                     <td className="px-3 py-2">
                       {inst.accounts_payable_id ? `#${inst.accounts_payable_id}` : "—"}
                     </td>
@@ -192,7 +334,7 @@ export default function PurchaseEntryImportPage() {
               const value = Number(e.target.value);
               if (value) void onMatchSupplier(value);
             }}
-            disabled={busy || isLocked}
+            disabled={busy || !!isLocked}
           >
             <option value="">Selecione o fornecedor</option>
             {st.suppliers.map((x) => (
@@ -244,8 +386,42 @@ export default function PurchaseEntryImportPage() {
                   <td className="px-4 py-3">{item.description}</td>
                   <td className="px-4 py-3">{item.ean ?? "—"}</td>
                   <td className="px-4 py-3">{item.ncm ?? "—"}</td>
-                  <td className="px-4 py-3">{item.quantity}</td>
-                  <td className="px-4 py-3">{money(item.unit_price)}</td>
+                  <td className="px-4 py-3">
+                    {isLocked ? (
+                      item.quantity
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.0001"
+                        className="h-9 rounded-md border px-2 w-24"
+                        defaultValue={Number(item.quantity)}
+                        onBlur={(e) => {
+                          const value = Number(e.target.value);
+                          if (value > 0 && value !== Number(item.quantity)) {
+                            void onUpdateItem(item.id, { quantity: value });
+                          }
+                        }}
+                      />
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isLocked ? (
+                      money(item.unit_price)
+                    ) : (
+                      <input
+                        type="number"
+                        step="0.000001"
+                        className="h-9 rounded-md border px-2 w-28"
+                        defaultValue={Number(item.unit_price)}
+                        onBlur={(e) => {
+                          const value = Number(e.target.value);
+                          if (value >= 0 && value !== Number(item.unit_price)) {
+                            void onUpdateItem(item.id, { unitPrice: value });
+                          }
+                        }}
+                      />
+                    )}
+                  </td>
                   <td className="px-4 py-3">{money(item.total_price)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
@@ -256,7 +432,7 @@ export default function PurchaseEntryImportPage() {
                           const value = Number(e.target.value);
                           if (value) void onMatchProduct(item.id, value);
                         }}
-                        disabled={busy || isLocked}
+                        disabled={busy || !!isLocked}
                       >
                         <option value="">Selecione</option>
                         {st.products.map((p) => (
@@ -312,7 +488,7 @@ export default function PurchaseEntryImportPage() {
 
         {header.status === "CONFIRMED" && (
           <Button asChild variant="outline">
-            <Link to="/estoque/movimentacoes">Ver movimentações de estoque</Link>
+            <Link to="/inventory/movements">Ver movimentações de estoque</Link>
           </Button>
         )}
       </div>

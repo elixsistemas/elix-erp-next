@@ -7,8 +7,12 @@ import {
   MatchProductSchema,
   MatchSupplierSchema,
   PurchaseEntryIdParamsSchema,
+  PurchaseEntryInstallmentParamsSchema,
   PurchaseEntryItemParamsSchema,
   PurchaseEntryListQuerySchema,
+  UpdateImportFinancialSchema,
+  UpdateImportInstallmentSchema,
+  UpdateImportItemSchema,
 } from "./purchase_entries.schema";
 
 function getAuthOrThrow(req: FastifyRequest) {
@@ -96,6 +100,41 @@ export async function createProductFromImportItem(
     auth.companyId,
     params.id,
     params.itemId,
+    body,
+  );
+  return rep.send(data);
+}
+
+export async function getFinancialOptions(req: FastifyRequest, rep: FastifyReply) {
+  const auth = getAuthOrThrow(req);
+  const data = await service.getFinancialOptions(auth.companyId);
+  return rep.send(data);
+}
+
+export async function updateImportFinancial(req: FastifyRequest, rep: FastifyReply) {
+  const auth = getAuthOrThrow(req);
+  const params = PurchaseEntryIdParamsSchema.parse(req.params);
+  const body = UpdateImportFinancialSchema.parse(req.body);
+  const data = await service.updateImportFinancial(auth.companyId, params.id, body);
+  return rep.send(data);
+}
+
+export async function updateImportItem(req: FastifyRequest, rep: FastifyReply) {
+  const auth = getAuthOrThrow(req);
+  const params = PurchaseEntryItemParamsSchema.parse(req.params);
+  const body = UpdateImportItemSchema.parse(req.body);
+  const data = await service.updateImportItem(auth.companyId, params.id, params.itemId, body);
+  return rep.send(data);
+}
+
+export async function updateImportInstallment(req: FastifyRequest, rep: FastifyReply) {
+  const auth = getAuthOrThrow(req);
+  const params = PurchaseEntryInstallmentParamsSchema.parse(req.params);
+  const body = UpdateImportInstallmentSchema.parse(req.body);
+  const data = await service.updateImportInstallment(
+    auth.companyId,
+    params.id,
+    params.installmentId,
     body,
   );
   return rep.send(data);

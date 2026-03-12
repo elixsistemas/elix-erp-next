@@ -9,6 +9,14 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
       app.addHook("preHandler", requireModule("commercial.purchase_entries"));
 
       app.get(
+        "/financial-options",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+        },
+        controller.getFinancialOptions,
+      );
+
+      app.get(
         "/",
         {
           preHandler: [requireAuth, requirePermission("purchase_entries.read")],
@@ -33,6 +41,14 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
       );
 
       app.put(
+        "/:id/financial",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+        },
+        controller.updateImportFinancial,
+      );
+
+      app.put(
         "/:id/match-supplier",
         {
           preHandler: [requireAuth, requirePermission("purchase_entries.update")],
@@ -46,6 +62,14 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
           preHandler: [requireAuth, requirePermission("purchase_entries.update")],
         },
         controller.createSupplierFromImport,
+      );
+
+      app.put(
+        "/:id/items/:itemId",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+        },
+        controller.updateImportItem,
       );
 
       app.put(
@@ -64,6 +88,14 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
         controller.createProductFromImportItem,
       );
 
+      app.put(
+        "/:id/installments/:installmentId",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+        },
+        controller.updateImportInstallment,
+      );
+
       app.post(
         "/:id/confirm",
         {
@@ -75,7 +107,7 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
       app.patch(
         "/:id/cancel",
         {
-          preHandler: [requireAuth, requirePermission("purchase_entries.cancel")],
+          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
         },
         controller.cancelImport,
       );

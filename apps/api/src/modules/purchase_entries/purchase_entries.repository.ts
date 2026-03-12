@@ -6,6 +6,9 @@ import type {
   PurchaseEntryImportStatus,
   PurchaseEntryItemMatchStatus,
   PurchaseEntryListQuery,
+  UpdateImportFinancialInput,
+  UpdateImportInstallmentInput,
+  UpdateImportItemInput,
 } from "./purchase_entries.schema";
 
 export type PurchaseEntryImportRow = {
@@ -28,6 +31,10 @@ export type PurchaseEntryImportRow = {
   supplier_state: string | null;
   supplier_zip_code: string | null;
   supplier_country: string | null;
+
+  chart_account_id: number | null;
+  cost_center_id: number | null;
+  payment_term_id: number | null;
 
   total_amount: number;
   products_amount: number;
@@ -108,6 +115,10 @@ export type ParsedImportData = {
   supplierZipCode: string | null;
   supplierCountry: string | null;
 
+  chartAccountId: number | null;
+  costCenterId: number | null;
+  paymentTermId: number | null;
+
   totalAmount: number;
   productsAmount: number;
   freightAmount: number;
@@ -142,8 +153,62 @@ export type ParsedImportData = {
   }>;
 };
 
+export type MiniOption = {
+  id: number;
+  name: string;
+  code?: string | null;
+};
+
 export function hashXml(xmlContent: string) {
   return createHash("sha256").update(xmlContent, "utf8").digest("hex");
+}
+
+export async function listChartAccountsMini(companyId: number): Promise<MiniOption[]> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .query<MiniOption>(`
+      SELECT id, name, code
+      FROM dbo.chart_of_accounts
+      WHERE company_id = @company_id
+        AND active = 1
+      ORDER BY code, name
+    `);
+
+  return result.recordset;
+}
+
+export async function listCostCentersMini(companyId: number): Promise<MiniOption[]> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .query<MiniOption>(`
+      SELECT id, name, code
+      FROM dbo.cost_centers
+      WHERE company_id = @company_id
+        AND active = 1
+      ORDER BY code, name
+    `);
+
+  return result.recordset;
+}
+
+export async function listPaymentTermsMini(companyId: number): Promise<MiniOption[]> {
+  const pool = await getPool();
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .query<MiniOption>(`
+      SELECT id, name
+      FROM dbo.payment_terms
+      WHERE company_id = @company_id
+        AND active = 1
+      ORDER BY name
+    `);
+
+  return result.recordset;
 }
 
 export async function findSupplierByDocument(companyId: number, document: string | null) {
@@ -270,6 +335,10 @@ export async function createImport(companyId: number, data: ParsedImportData) {
       .input("supplier_zip_code", data.supplierZipCode)
       .input("supplier_country", data.supplierCountry)
 
+      .input("chart_account_id", data.chartAccountId)
+      .input("cost_center_id", data.costCenterId)
+      .input("payment_term_id", data.paymentTermId)
+
       .input("total_amount", data.totalAmount)
       .input("products_amount", data.productsAmount)
       .input("freight_amount", data.freightAmount)
@@ -299,6 +368,9 @@ export async function createImport(companyId: number, data: ParsedImportData) {
           supplier_state,
           supplier_zip_code,
           supplier_country,
+          chart_account_id,
+          cost_center_id,
+          payment_term_id,
           total_amount,
           products_amount,
           freight_amount,
@@ -327,6 +399,9 @@ export async function createImport(companyId: number, data: ParsedImportData) {
           @supplier_state,
           @supplier_zip_code,
           @supplier_country,
+          @chart_account_id,
+          @cost_center_id,
+          @payment_term_id,
           @total_amount,
           @products_amount,
           @freight_amount,
@@ -466,6 +541,9 @@ export async function listImports(companyId: number, query: PurchaseEntryListQue
         supplier_state,
         supplier_zip_code,
         supplier_country,
+        chart_account_id,
+        cost_center_id,
+        payment_term_id,
         total_amount,
         products_amount,
         freight_amount,
@@ -526,6 +604,9 @@ export async function getImportById(
         supplier_state,
         supplier_zip_code,
         supplier_country,
+        chart_account_id,
+        cost_center_id,
+        payment_term_id,
         total_amount,
         products_amount,
         freight_amount,
@@ -606,6 +687,33 @@ export async function getImportById(
   };
 }
 
+export async function updateImportFinancial(
+  companyId: number,
+  id: number,
+  input: UpdateImportFinancialInput,
+) {
+  const pool = await getPool();
+
+  await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .input("chart_account_id", input.chartAccountId ?? null)
+    .input("cost_center_id", input.costCenterId ?? null)
+    .input("payment_term_id", input.paymentTermId ?? null)
+    .query(`
+      UPDATE dbo.purchase_entry_imports
+      SET
+        chart_account_id = @chart_account_id,
+        cost_center_id = @cost_center_id,
+        payment_term_id = @payment_term_id,
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND id = @id
+        AND status NOT IN ('CONFIRMED', 'CANCELED')
+    `);
+}
+
 export async function updateImportSupplier(companyId: number, id: number, supplierId: number) {
   const pool = await getPool();
 
@@ -650,6 +758,183 @@ export async function updateImportItemProduct(
         AND import_id = @id
         AND id = @item_id
     `);
+}
+
+export async function updateImportItem(
+  companyId: number,
+  id: number,
+  itemId: number,
+  input: UpdateImportItemInput,
+) {
+  const pool = await getPool();
+
+  const current = await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .input("item_id", itemId)
+    .query<{
+      quantity: number;
+      unit_price: number;
+      total_price: number;
+    }>(`
+      SELECT TOP 1
+        quantity,
+        unit_price,
+        total_price
+      FROM dbo.purchase_entry_import_items
+      WHERE company_id = @company_id
+        AND import_id = @id
+        AND id = @item_id
+    `);
+
+  const row = current.recordset[0];
+  if (!row) {
+    throw new Error("Item da importação não encontrado.");
+  }
+
+  const quantity = input.quantity ?? Number(row.quantity);
+  const unitPrice = input.unitPrice ?? Number(row.unit_price);
+  const totalPrice =
+    input.totalPrice ?? Number((quantity * unitPrice).toFixed(2));
+
+  await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .input("item_id", itemId)
+    .input("quantity", quantity)
+    .input("unit_price", unitPrice)
+    .input("total_price", totalPrice)
+    .query(`
+      UPDATE dbo.purchase_entry_import_items
+      SET
+        quantity = @quantity,
+        unit_price = @unit_price,
+        total_price = @total_price,
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND import_id = @id
+        AND id = @item_id
+        AND match_status IN ('PENDING', 'MATCHED', 'REVIEW', 'NEW_PRODUCT')
+    `);
+
+  await recalcImportTotals(companyId, id);
+}
+
+export async function updateImportInstallment(
+  companyId: number,
+  id: number,
+  installmentId: number,
+  input: UpdateImportInstallmentInput,
+) {
+  const pool = await getPool();
+
+  await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .input("installment_id", installmentId)
+    .input("due_date", input.dueDate ?? null)
+    .input("amount", input.amount ?? null)
+    .query(`
+      UPDATE dbo.purchase_entry_import_installments
+      SET
+        due_date = COALESCE(@due_date, due_date),
+        amount = COALESCE(@amount, amount),
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND import_id = @id
+        AND id = @installment_id
+    `);
+
+  await recalcImportTotals(companyId, id, false);
+}
+
+export async function recalcImportTotals(
+  companyId: number,
+  id: number,
+  syncInstallmentsFromItems = true,
+) {
+  const pool = await getPool();
+
+  const itemsResult = await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .query<{ products_amount: number }>(`
+      SELECT
+        COALESCE(SUM(total_price), 0) AS products_amount
+      FROM dbo.purchase_entry_import_items
+      WHERE company_id = @company_id
+        AND import_id = @id
+    `);
+
+  const productsAmount = Number(itemsResult.recordset[0]?.products_amount ?? 0);
+
+  const headerResult = await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .query<{ freight_amount: number; discount_amount: number }>(`
+      SELECT
+        freight_amount,
+        discount_amount
+      FROM dbo.purchase_entry_imports
+      WHERE company_id = @company_id
+        AND id = @id
+    `);
+
+  const freightAmount = Number(headerResult.recordset[0]?.freight_amount ?? 0);
+  const discountAmount = Number(headerResult.recordset[0]?.discount_amount ?? 0);
+  const totalAmount = Number((productsAmount + freightAmount - discountAmount).toFixed(2));
+
+  await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .input("products_amount", productsAmount)
+    .input("total_amount", totalAmount)
+    .query(`
+      UPDATE dbo.purchase_entry_imports
+      SET
+        products_amount = @products_amount,
+        total_amount = @total_amount,
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND id = @id
+    `);
+
+  if (syncInstallmentsFromItems) {
+    const instCountResult = await pool
+      .request()
+      .input("company_id", companyId)
+      .input("id", id)
+      .query<{ cnt: number }>(`
+        SELECT COUNT(*) AS cnt
+        FROM dbo.purchase_entry_import_installments
+        WHERE company_id = @company_id
+          AND import_id = @id
+      `);
+
+    const count = Number(instCountResult.recordset[0]?.cnt ?? 0);
+
+    if (count === 1) {
+      await pool
+        .request()
+        .input("company_id", companyId)
+        .input("id", id)
+        .input("amount", totalAmount)
+        .query(`
+          UPDATE dbo.purchase_entry_import_installments
+          SET
+            amount = @amount,
+            updated_at = SYSUTCDATETIME()
+          WHERE company_id = @company_id
+            AND import_id = @id
+        `);
+    }
+  }
 }
 
 export async function getImportPendingCounts(companyId: number, id: number) {
@@ -1043,7 +1328,7 @@ export async function createProductFromImportItem(
     .input("name", productName)
     .input("sku", null)
     .input("ean", item.ean ?? null)
-    .input("price", 0) // não copiar custo para preço de venda
+    .input("price", 0)
     .input("cost", Number(item.unit_price ?? 0))
     .input("kind", kind)
     .input("uom", item.uom ?? "UN")
@@ -1124,6 +1409,9 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
           supplier_state,
           supplier_zip_code,
           supplier_country,
+          chart_account_id,
+          cost_center_id,
+          payment_term_id,
           total_amount,
           products_amount,
           freight_amount,
@@ -1275,6 +1563,9 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
         .input("amount", inst.amount)
         .input("open_amount", inst.amount)
         .input("status", "OPEN")
+        .input("payment_term_id", header.payment_term_id ?? null)
+        .input("chart_account_id", header.chart_account_id ?? null)
+        .input("cost_center_id", header.cost_center_id ?? null)
         .input("source_type", "PURCHASE_XML")
         .input("source_id", id)
         .input("installment_no", inst.line_no)
@@ -1291,6 +1582,9 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
             amount,
             open_amount,
             status,
+            payment_term_id,
+            chart_account_id,
+            cost_center_id,
             source_type,
             source_id,
             installment_no,
@@ -1308,6 +1602,9 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
             @amount,
             @open_amount,
             @status,
+            @payment_term_id,
+            @chart_account_id,
+            @cost_center_id,
             @source_type,
             @source_id,
             @installment_no,

@@ -1,4 +1,5 @@
 import type {
+  FinancialOptions,
   ProductMini,
   PurchaseEntryImportDetails,
   PurchaseEntryImportRow,
@@ -66,9 +67,27 @@ export function getPurchaseEntryImportById(id: number) {
   return api<PurchaseEntryImportDetails>(`${base}/${id}`);
 }
 
+export function getPurchaseEntryFinancialOptions() {
+  return api<FinancialOptions>(`${base}/financial-options`);
+}
+
 export function importPurchaseEntryXml(payload: PurchaseEntryImportUploadValues) {
   return api<PurchaseEntryImportDetails>(`${base}/import-xml`, {
     method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updatePurchaseEntryFinancial(
+  id: number,
+  payload: {
+    chartAccountId?: number | null;
+    costCenterId?: number | null;
+    paymentTermId?: number | null;
+  },
+) {
+  return api<PurchaseEntryImportDetails>(`${base}/${id}/financial`, {
+    method: "PUT",
     body: JSON.stringify(payload),
   });
 }
@@ -106,6 +125,35 @@ export function createProductFromImportItem(
   return api<PurchaseEntryImportDetails>(`${base}/${id}/items/${itemId}/create-product`, {
     method: "POST",
     body: JSON.stringify(payload ?? { kind: "product", trackInventory: true }),
+  });
+}
+
+export function updatePurchaseEntryItem(
+  id: number,
+  itemId: number,
+  payload: {
+    quantity?: number;
+    unitPrice?: number;
+    totalPrice?: number;
+  },
+) {
+  return api<PurchaseEntryImportDetails>(`${base}/${id}/items/${itemId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updatePurchaseEntryInstallment(
+  id: number,
+  installmentId: number,
+  payload: {
+    dueDate?: string;
+    amount?: number;
+  },
+) {
+  return api<PurchaseEntryImportDetails>(`${base}/${id}/installments/${installmentId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
   });
 }
 
