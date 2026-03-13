@@ -10,21 +10,37 @@ import type {
   SupplierMini,
 } from "./purchase-entry-imports.types";
 
-export function usePurchaseEntryImport(id?: number) {
+type UsePurchaseEntryImportResult = {
+  data: PurchaseEntryImportDetails | null;
+  suppliers: SupplierMini[];
+  products: ProductMini[];
+  loading: boolean;
+  reload: () => Promise<void>;
+};
+
+export function usePurchaseEntryImport(id?: number): UsePurchaseEntryImportResult {
   const [data, setData] = useState<PurchaseEntryImportDetails | null>(null);
   const [suppliers, setSuppliers] = useState<SupplierMini[]>([]);
   const [products, setProducts] = useState<ProductMini[]>([]);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
-    if (!id) return;
+    if (!id || Number.isNaN(id)) {
+      setData(null);
+      setSuppliers([]);
+      setProducts([]);
+      return;
+    }
+
     setLoading(true);
+
     try {
       const [details, supplierList, productList] = await Promise.all([
         getPurchaseEntryImportById(id),
         listSuppliersMini(),
         listProductsMini(),
       ]);
+
       setData(details);
       setSuppliers(supplierList);
       setProducts(productList);

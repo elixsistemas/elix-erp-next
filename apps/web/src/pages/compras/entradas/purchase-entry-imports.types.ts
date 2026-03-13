@@ -43,16 +43,15 @@ export type PurchaseEntryImportRow = {
   discount_amount: number;
 
   source_file_name: string | null;
-
   status: PurchaseEntryImportStatus;
   match_summary: string | null;
   error_message: string | null;
 
   accounts_payable_id: number | null;
   fiscal_document_id: number | null;
+
   confirmed_at: string | null;
   confirmed_by_user_id: number | null;
-
   created_at: string;
   updated_at: string | null;
 };
@@ -62,18 +61,22 @@ export type PurchaseEntryImportItemRow = {
   import_id: number;
   company_id: number;
   line_no: number;
+
   supplier_code: string | null;
   ean: string | null;
   description: string;
   ncm: string | null;
   cfop: string | null;
   uom: string | null;
+
   quantity: number;
   unit_price: number;
   total_price: number;
+
   product_id: number | null;
   match_status: PurchaseEntryItemMatchStatus;
   match_notes: string | null;
+
   created_at: string;
   updated_at: string | null;
 };

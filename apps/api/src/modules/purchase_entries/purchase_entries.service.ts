@@ -10,6 +10,7 @@ import type {
   UpdateImportFinancialInput,
   UpdateImportInstallmentInput,
   UpdateImportItemInput,
+  UpdateImportLogisticsInput,
 } from "./purchase_entries.schema";
 
 function ensureArray<T>(value: T | T[] | undefined | null): T[] {
@@ -37,16 +38,14 @@ function toNumber(value: any) {
 
 function extractAccessKey(parsed: any): string | null {
   const idAttr =
-    parsed?.nfeProc?.NFe?.infNFe?.["@_Id"] ||
-    parsed?.NFe?.infNFe?.["@_Id"];
+    parsed?.nfeProc?.NFe?.infNFe?.["@_Id"] || parsed?.NFe?.infNFe?.["@_Id"];
 
   if (idAttr && typeof idAttr === "string") {
     return idAttr.replace(/^NFe/, "");
   }
 
   const chNFe =
-    parsed?.nfeProc?.protNFe?.infProt?.chNFe ||
-    parsed?.protNFe?.infProt?.chNFe;
+    parsed?.nfeProc?.protNFe?.infProt?.chNFe || parsed?.protNFe?.infProt?.chNFe;
 
   if (typeof chNFe === "string") {
     return chNFe;
@@ -100,7 +99,11 @@ function makeValidationError(
   return err;
 }
 
-export async function importXml(companyId: number, _userId: number, input: ImportXmlInput) {
+export async function importXml(
+  companyId: number,
+  _userId: number,
+  input: ImportXmlInput,
+) {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: "@_",
@@ -110,6 +113,7 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   });
 
   let parsed: any;
+
   try {
     parsed = parser.parse(input.xmlContent);
   } catch {
@@ -117,6 +121,7 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   }
 
   const infNFe = parsed?.nfeProc?.NFe?.infNFe ?? parsed?.NFe?.infNFe;
+
   if (!infNFe) {
     throw makeValidationError(
       "Estrutura de NF-e não encontrada.",
@@ -125,6 +130,7 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   }
 
   const accessKey = extractAccessKey(parsed);
+
   if (!accessKey || accessKey.length !== 44) {
     throw makeValidationError(
       "Chave de acesso não encontrada ou inválida.",
@@ -133,11 +139,15 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   }
 
   const duplicateId = await repo.existsImportByAccessKey(companyId, accessKey);
+
   if (duplicateId) {
     throw makeConflictError(
       "XML já importado para esta empresa.",
       "PURCHASE_ENTRY_XML_DUPLICATE",
-      { importId: duplicateId, accessKey },
+      {
+        importId: duplicateId,
+        accessKey,
+      },
     );
   }
 
@@ -146,6 +156,10 @@ export async function importXml(companyId: number, _userId: number, input: Impor
   const enderEmit = emit?.enderEmit ?? {};
   const dest = infNFe?.dest ?? {};
   const cobr = infNFe?.cobr ?? {};
+  const transp = infNFe?.transp ?? {};
+  const transporta = transp?.transporta ?? {};
+  const veicTransp = transp?.veicTransp ?? {};
+
   const dups = ensureArray(cobr?.dup);
   const det = ensureArray(infNFe?.det);
   const totalIcms = infNFe?.total?.ICMSTot ?? {};
@@ -187,11 +201,39 @@ export async function importXml(companyId: number, _userId: number, input: Impor
 
   const supplierId = await repo.findSupplierByDocument(companyId, supplierDocument);
 
-  const items = [];
+  const items: Array<{
+    lineNo: number;
+    supplierCode: string | null;
+    ean: string | null;
+    description: string;
+    ncm: string | null;
+    cfop: string | null;
+    uom: string | null;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    productId: number | null;
+    matchStatus: "PENDING" | "MATCHED" | "REVIEW" | "NEW_PRODUCT";
+    matchNotes: string | null;
+    grossUnitCost: number;
+    freightAllocated: number;
+    insuranceAllocated: number;
+    otherExpensesAllocated: number;
+    discountAllocated: number;
+    landedTotalCost: number;
+    landedUnitCost: number;
+    weightKg: number | null;
+  }> = [];
+
   let pendingCount = 0;
 
   for (let i = 0; i < det.length; i++) {
     const prod = det[i]?.prod ?? {};
+
+    const quantity = toNumber(prod?.qCom);
+    const unitPrice = toNumber(prod?.vUnCom);
+    const totalPrice = toNumber(prod?.vProd);
+
     const match = await repo.findProductMatch(companyId, {
       ean: getText(prod?.cEAN),
       supplierCode: getText(prod?.cProd),
@@ -210,19 +252,31 @@ export async function importXml(companyId: number, _userId: number, input: Impor
       ncm: getText(prod?.NCM),
       cfop: getText(prod?.CFOP),
       uom: getText(prod?.uCom),
-      quantity: toNumber(prod?.qCom),
-      unitPrice: toNumber(prod?.vUnCom),
-      totalPrice: toNumber(prod?.vProd),
+      quantity,
+      unitPrice,
+      totalPrice,
       productId: match.productId,
       matchStatus: match.matchStatus,
       matchNotes: match.matchNotes,
+
+      grossUnitCost: unitPrice,
+      freightAllocated: 0,
+      insuranceAllocated: 0,
+      otherExpensesAllocated: 0,
+      discountAllocated: 0,
+      landedTotalCost: totalPrice,
+      landedUnitCost: quantity > 0 ? Number((totalPrice / quantity).toFixed(6)) : 0,
+      weightKg: null,
     });
   }
 
   const rawIssueDate = getText(ide?.dhEmi) || getText(ide?.dEmi);
   const normalizedIssueDate = rawIssueDate ? new Date(rawIssueDate) : null;
 
-  if (rawIssueDate && (!normalizedIssueDate || Number.isNaN(normalizedIssueDate.getTime()))) {
+  if (
+    rawIssueDate &&
+    (!normalizedIssueDate || Number.isNaN(normalizedIssueDate.getTime()))
+  ) {
     throw makeValidationError(
       "Data de emissão inválida no XML.",
       "PURCHASE_ENTRY_XML_ISSUE_DATE_INVALID",
@@ -241,14 +295,16 @@ export async function importXml(companyId: number, _userId: number, input: Impor
           {
             lineNo: 1,
             installmentNumber: "001",
-            dueDate: normalizedIssueDate ? normalizedIssueDate.toISOString().slice(0, 10) : null,
+            dueDate: normalizedIssueDate
+              ? normalizedIssueDate.toISOString().slice(0, 10)
+              : null,
             amount: toNumber(totalIcms?.vNF),
           },
         ];
 
   const hasPendingHeader = !supplierId;
-  const status =
-    !hasPendingHeader && pendingCount === 0 ? "READY" : "MATCH_PENDING";
+
+  const status = !hasPendingHeader && pendingCount === 0 ? "READY" : "MATCH_PENDING";
 
   const importId = await repo.createImport(companyId, {
     accessKey,
@@ -262,9 +318,8 @@ export async function importXml(companyId: number, _userId: number, input: Impor
     supplierId,
 
     supplierAddressLine1:
-      [getText(enderEmit?.xLgr), getText(enderEmit?.nro)]
-        .filter(Boolean)
-        .join(", ") || null,
+      [getText(enderEmit?.xLgr), getText(enderEmit?.nro)].filter(Boolean).join(", ") ||
+      null,
     supplierAddressLine2: getText(enderEmit?.xCpl),
     supplierDistrict: getText(enderEmit?.xBairro),
     supplierCity: getText(enderEmit?.xMun),
@@ -279,15 +334,33 @@ export async function importXml(companyId: number, _userId: number, input: Impor
     totalAmount: toNumber(totalIcms?.vNF),
     productsAmount: toNumber(totalIcms?.vProd),
     freightAmount: toNumber(totalIcms?.vFrete),
+    insuranceAmount: toNumber(totalIcms?.vSeg),
+    otherExpensesAmount: toNumber(totalIcms?.vOutro),
     discountAmount: toNumber(totalIcms?.vDesc),
+
+    carrierId: null,
+    carrierVehicleId: null,
+    freightMode: getText(transp?.modFrete),
+    carrierNameXml: getText(transporta?.xNome),
+    carrierDocumentXml:
+      onlyDigits(getText(transporta?.CNPJ) || getText(transporta?.CPF)) || null,
+    carrierIeXml: getText(transporta?.IE),
+
+    allocationMethod: "VALUE",
+    costPolicy: "LANDED_LAST_COST",
+    pricePolicy: "NONE",
+    markupPercent: null,
+    marginPercent: null,
+
+    purchaseOrderId: null,
 
     fileName: input.fileName,
     xmlContent: input.xmlContent,
     matchSummary: hasPendingHeader
       ? "Fornecedor pendente e/ou itens pendentes"
       : pendingCount > 0
-      ? "Itens pendentes de vínculo"
-      : "Pronto para confirmar",
+        ? "Itens pendentes de vínculo"
+        : "Pronto para confirmar",
     status,
     items,
     installments,
@@ -341,6 +414,15 @@ export async function updateImportFinancial(
   input: UpdateImportFinancialInput,
 ) {
   await repo.updateImportFinancial(companyId, id, input);
+  return repo.getImportById(companyId, id);
+}
+
+export async function updateImportLogistics(
+  companyId: number,
+  id: number,
+  input: UpdateImportLogisticsInput,
+) {
+  await repo.updateImportLogistics(companyId, id, input);
   return repo.getImportById(companyId, id);
 }
 

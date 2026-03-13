@@ -30,14 +30,16 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   });
 
   const text = await res.text();
-  const ct = res.headers.get("content-type") ?? "";
+  const contentType = res.headers.get("content-type") ?? "";
 
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} em ${url}: ${text.slice(0, 300)}`);
   }
 
-  if (!ct.includes("application/json")) {
-    throw new Error(`Esperava JSON, veio "${ct}" em ${url}. Início: ${text.slice(0, 120)}`);
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      `Esperava JSON, veio "${contentType}" em ${url}. Início: ${text.slice(0, 120)}`,
+    );
   }
 
   return JSON.parse(text) as T;
@@ -57,6 +59,7 @@ export function listPurchaseEntryImports(params?: {
   if (params?.status) usp.set("status", params.status);
   if (params?.q?.trim()) usp.set("q", params.q.trim());
   if (params?.supplierId) usp.set("supplierId", String(params.supplierId));
+
   usp.set("limit", String(params?.limit ?? 100));
   usp.set("offset", String(params?.offset ?? 0));
 
@@ -72,7 +75,7 @@ export function getPurchaseEntryFinancialOptions() {
 }
 
 export function importPurchaseEntryXml(payload: PurchaseEntryImportUploadValues) {
-  return api<PurchaseEntryImportDetails>(`${base}/import-xml`, {
+  return api<{ id: number; status: string }>(`${base}/import-xml`, {
     method: "POST",
     body: JSON.stringify(payload),
   });
@@ -86,28 +89,28 @@ export function updatePurchaseEntryFinancial(
     paymentTermId?: number | null;
   },
 ) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/financial`, {
+  return api<{ ok: true }>(`${base}/${id}/financial`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
 }
 
 export function matchPurchaseEntrySupplier(id: number, supplierId: number) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/match-supplier`, {
+  return api<{ ok: true }>(`${base}/${id}/match-supplier`, {
     method: "PUT",
     body: JSON.stringify({ supplierId }),
   });
 }
 
 export function createSupplierFromImport(id: number, payload?: { overwriteName?: string }) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/create-supplier`, {
+  return api<{ supplierId: number }>(`${base}/${id}/create-supplier`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
 }
 
 export function matchPurchaseEntryProduct(id: number, itemId: number, productId: number) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/items/${itemId}/match-product`, {
+  return api<{ ok: true }>(`${base}/${id}/items/${itemId}/match-product`, {
     method: "PUT",
     body: JSON.stringify({ productId }),
   });
@@ -122,7 +125,7 @@ export function createProductFromImportItem(
     trackInventory?: boolean;
   },
 ) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/items/${itemId}/create-product`, {
+  return api<{ productId: number }>(`${base}/${id}/items/${itemId}/create-product`, {
     method: "POST",
     body: JSON.stringify(payload ?? { kind: "product", trackInventory: true }),
   });
@@ -137,7 +140,7 @@ export function updatePurchaseEntryItem(
     totalPrice?: number;
   },
 ) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/items/${itemId}`, {
+  return api<{ ok: true }>(`${base}/${id}/items/${itemId}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -151,7 +154,7 @@ export function updatePurchaseEntryInstallment(
     amount?: number;
   },
 ) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}/installments/${installmentId}`, {
+  return api<{ ok: true }>(`${base}/${id}/installments/${installmentId}`, {
     method: "PUT",
     body: JSON.stringify(payload),
   });
@@ -173,15 +176,22 @@ export function cancelPurchaseEntryImport(id: number) {
 
 export async function listSuppliersMini(): Promise<SupplierMini[]> {
   const data = await api<any>("/api/suppliers");
+
   const arr = Array.isArray(data) ? data : (data?.data ?? []);
+
   return Array.isArray(arr)
-    ? arr.map((x: any) => ({ id: Number(x.id), name: String(x.name ?? "") }))
+    ? arr.map((x: any) => ({
+        id: Number(x.id),
+        name: String(x.name ?? ""),
+      }))
     : [];
 }
 
 export async function listProductsMini(): Promise<ProductMini[]> {
   const data = await api<any>("/api/products");
+
   const arr = Array.isArray(data) ? data : (data?.data ?? []);
+
   return Array.isArray(arr)
     ? arr.map((x: any) => ({
         id: Number(x.id),

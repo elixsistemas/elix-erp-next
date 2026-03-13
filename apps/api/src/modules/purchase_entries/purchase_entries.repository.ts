@@ -1,3 +1,4 @@
+import type { Transaction } from "mssql";
 import { createHash } from "node:crypto";
 import { getPool } from "../../config/db";
 import type {
@@ -9,6 +10,7 @@ import type {
   UpdateImportFinancialInput,
   UpdateImportInstallmentInput,
   UpdateImportItemInput,
+  UpdateImportLogisticsInput,
 } from "./purchase_entries.schema";
 
 export type PurchaseEntryImportRow = {
@@ -39,7 +41,25 @@ export type PurchaseEntryImportRow = {
   total_amount: number;
   products_amount: number;
   freight_amount: number;
+  insurance_amount: number;
+  other_expenses_amount: number;
   discount_amount: number;
+
+  carrier_id: number | null;
+  carrier_vehicle_id: number | null;
+  freight_mode: string | null;
+  carrier_name_xml: string | null;
+  carrier_document_xml: string | null;
+  carrier_ie_xml: string | null;
+
+  allocation_method: "VALUE" | "QUANTITY" | "WEIGHT" | "MANUAL";
+  cost_policy: "LAST_COST" | "AVERAGE_COST" | "LANDED_LAST_COST";
+  price_policy: "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
+  markup_percent: number | null;
+  margin_percent: number | null;
+
+  purchase_order_id: number | null;
+  definitive_purchase_entry_id: number | null;
 
   source_file_name: string | null;
 
@@ -73,6 +93,16 @@ export type PurchaseEntryImportItemRow = {
   product_id: number | null;
   match_status: PurchaseEntryItemMatchStatus;
   match_notes: string | null;
+
+  gross_unit_cost: number;
+  freight_allocated: number;
+  insurance_allocated: number;
+  other_expenses_allocated: number;
+  discount_allocated: number;
+  landed_total_cost: number;
+  landed_unit_cost: number;
+  weight_kg: number | null;
+
   created_at: string;
   updated_at: string | null;
 };
@@ -122,7 +152,24 @@ export type ParsedImportData = {
   totalAmount: number;
   productsAmount: number;
   freightAmount: number;
+  insuranceAmount: number;
+  otherExpensesAmount: number;
   discountAmount: number;
+
+  carrierId: number | null;
+  carrierVehicleId: number | null;
+  freightMode: string | null;
+  carrierNameXml: string | null;
+  carrierDocumentXml: string | null;
+  carrierIeXml: string | null;
+
+  allocationMethod: "VALUE" | "QUANTITY" | "WEIGHT" | "MANUAL";
+  costPolicy: "LAST_COST" | "AVERAGE_COST" | "LANDED_LAST_COST";
+  pricePolicy: "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
+  markupPercent: number | null;
+  marginPercent: number | null;
+
+  purchaseOrderId: number | null;
 
   fileName: string;
   xmlContent: string;
@@ -143,6 +190,15 @@ export type ParsedImportData = {
     productId: number | null;
     matchStatus: PurchaseEntryItemMatchStatus;
     matchNotes: string | null;
+
+    grossUnitCost?: number;
+    freightAllocated?: number;
+    insuranceAllocated?: number;
+    otherExpensesAllocated?: number;
+    discountAllocated?: number;
+    landedTotalCost?: number;
+    landedUnitCost?: number;
+    weightKg?: number | null;
   }>;
 
   installments: Array<{
@@ -158,6 +214,29 @@ export type MiniOption = {
   name: string;
   code?: string | null;
 };
+
+type SqlExecutor = {
+  request: Transaction["request"];
+};
+
+function onlyDigits(value: string | null | undefined) {
+  return (value ?? "").replace(/\D/g, "");
+}
+
+function clean(value: string | null | undefined, maxChars: number) {
+  const v = (value ?? "").trim();
+  if (!v) return null;
+  return v.slice(0, maxChars);
+}
+
+function normalizeCountry(value: string | null | undefined) {
+  const raw = (value ?? "").trim().toUpperCase();
+  if (!raw) return "BR";
+  if (raw === "BR" || raw === "BRA" || raw === "BRASIL" || raw === "BRAZIL") {
+    return "BR";
+  }
+  return raw.slice(0, 2);
+}
 
 export function hashXml(xmlContent: string) {
   return createHash("sha256").update(xmlContent, "utf8").digest("hex");
@@ -211,10 +290,26 @@ export async function listPaymentTermsMini(companyId: number): Promise<MiniOptio
   return result.recordset;
 }
 
+export async function getCompanyDocument(companyId: number): Promise<string | null> {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .query<{ document: string | null }>(`
+      SELECT TOP 1
+        document
+      FROM dbo.companies
+      WHERE id = @company_id
+    `);
+
+  return result.recordset[0]?.document ?? null;
+}
+
 export async function findSupplierByDocument(companyId: number, document: string | null) {
   if (!document) return null;
 
-  const normalized = document.replace(/\D/g, "");
+  const normalized = onlyDigits(document);
   if (!normalized) return null;
 
   const pool = await getPool();
@@ -321,12 +416,10 @@ export async function createImport(companyId: number, data: ParsedImportData) {
       .input("invoice_number", data.invoiceNumber)
       .input("invoice_series", data.invoiceSeries)
       .input("issue_date", data.issueDate)
-
       .input("supplier_document", data.supplierDocument)
       .input("supplier_name", data.supplierName)
       .input("supplier_ie", data.supplierIe)
       .input("supplier_id", data.supplierId)
-
       .input("supplier_address_line1", data.supplierAddressLine1)
       .input("supplier_address_line2", data.supplierAddressLine2)
       .input("supplier_district", data.supplierDistrict)
@@ -334,20 +427,30 @@ export async function createImport(companyId: number, data: ParsedImportData) {
       .input("supplier_state", data.supplierState)
       .input("supplier_zip_code", data.supplierZipCode)
       .input("supplier_country", data.supplierCountry)
-
       .input("chart_account_id", data.chartAccountId)
       .input("cost_center_id", data.costCenterId)
       .input("payment_term_id", data.paymentTermId)
-
       .input("total_amount", data.totalAmount)
       .input("products_amount", data.productsAmount)
       .input("freight_amount", data.freightAmount)
+      .input("insurance_amount", data.insuranceAmount ?? 0)
+      .input("other_expenses_amount", data.otherExpensesAmount ?? 0)
       .input("discount_amount", data.discountAmount)
-
+      .input("carrier_id", data.carrierId ?? null)
+      .input("carrier_vehicle_id", data.carrierVehicleId ?? null)
+      .input("freight_mode", data.freightMode ?? null)
+      .input("carrier_name_xml", data.carrierNameXml ?? null)
+      .input("carrier_document_xml", data.carrierDocumentXml ?? null)
+      .input("carrier_ie_xml", data.carrierIeXml ?? null)
+      .input("allocation_method", data.allocationMethod ?? "VALUE")
+      .input("cost_policy", data.costPolicy ?? "LANDED_LAST_COST")
+      .input("price_policy", data.pricePolicy ?? "NONE")
+      .input("markup_percent", data.markupPercent ?? null)
+      .input("margin_percent", data.marginPercent ?? null)
+      .input("purchase_order_id", data.purchaseOrderId ?? null)
       .input("xml_content", data.xmlContent)
       .input("xml_hash", hashXml(data.xmlContent))
       .input("source_file_name", data.fileName)
-
       .input("status", data.status)
       .input("match_summary", data.matchSummary)
       .query<{ id: number }>(`
@@ -374,7 +477,21 @@ export async function createImport(companyId: number, data: ParsedImportData) {
           total_amount,
           products_amount,
           freight_amount,
+          insurance_amount,
+          other_expenses_amount,
           discount_amount,
+          carrier_id,
+          carrier_vehicle_id,
+          freight_mode,
+          carrier_name_xml,
+          carrier_document_xml,
+          carrier_ie_xml,
+          allocation_method,
+          cost_policy,
+          price_policy,
+          markup_percent,
+          margin_percent,
+          purchase_order_id,
           xml_content,
           xml_hash,
           source_file_name,
@@ -405,7 +522,21 @@ export async function createImport(companyId: number, data: ParsedImportData) {
           @total_amount,
           @products_amount,
           @freight_amount,
+          @insurance_amount,
+          @other_expenses_amount,
           @discount_amount,
+          @carrier_id,
+          @carrier_vehicle_id,
+          @freight_mode,
+          @carrier_name_xml,
+          @carrier_document_xml,
+          @carrier_ie_xml,
+          @allocation_method,
+          @cost_policy,
+          @price_policy,
+          @markup_percent,
+          @margin_percent,
+          @purchase_order_id,
           @xml_content,
           @xml_hash,
           @source_file_name,
@@ -434,6 +565,14 @@ export async function createImport(companyId: number, data: ParsedImportData) {
         .input("product_id", item.productId)
         .input("match_status", item.matchStatus)
         .input("match_notes", item.matchNotes)
+        .input("gross_unit_cost", item.grossUnitCost ?? item.unitPrice)
+        .input("freight_allocated", item.freightAllocated ?? 0)
+        .input("insurance_allocated", item.insuranceAllocated ?? 0)
+        .input("other_expenses_allocated", item.otherExpensesAllocated ?? 0)
+        .input("discount_allocated", item.discountAllocated ?? 0)
+        .input("landed_total_cost", item.landedTotalCost ?? item.totalPrice)
+        .input("landed_unit_cost", item.landedUnitCost ?? item.unitPrice)
+        .input("weight_kg", item.weightKg ?? null)
         .query(`
           INSERT INTO dbo.purchase_entry_import_items (
             import_id,
@@ -450,7 +589,15 @@ export async function createImport(companyId: number, data: ParsedImportData) {
             total_price,
             product_id,
             match_status,
-            match_notes
+            match_notes,
+            gross_unit_cost,
+            freight_allocated,
+            insurance_allocated,
+            other_expenses_allocated,
+            discount_allocated,
+            landed_total_cost,
+            landed_unit_cost,
+            weight_kg
           )
           VALUES (
             @import_id,
@@ -467,7 +614,15 @@ export async function createImport(companyId: number, data: ParsedImportData) {
             @total_price,
             @product_id,
             @match_status,
-            @match_notes
+            @match_notes,
+            @gross_unit_cost,
+            @freight_allocated,
+            @insurance_allocated,
+            @other_expenses_allocated,
+            @discount_allocated,
+            @landed_total_cost,
+            @landed_unit_cost,
+            @weight_kg
           )
         `);
     }
@@ -547,7 +702,22 @@ export async function listImports(companyId: number, query: PurchaseEntryListQue
         total_amount,
         products_amount,
         freight_amount,
+        insurance_amount,
+        other_expenses_amount,
         discount_amount,
+        carrier_id,
+        carrier_vehicle_id,
+        freight_mode,
+        carrier_name_xml,
+        carrier_document_xml,
+        carrier_ie_xml,
+        allocation_method,
+        cost_policy,
+        price_policy,
+        markup_percent,
+        margin_percent,
+        purchase_order_id,
+        definitive_purchase_entry_id,
         source_file_name,
         status,
         match_summary,
@@ -610,7 +780,22 @@ export async function getImportById(
         total_amount,
         products_amount,
         freight_amount,
+        insurance_amount,
+        other_expenses_amount,
         discount_amount,
+        carrier_id,
+        carrier_vehicle_id,
+        freight_mode,
+        carrier_name_xml,
+        carrier_document_xml,
+        carrier_ie_xml,
+        allocation_method,
+        cost_policy,
+        price_policy,
+        markup_percent,
+        margin_percent,
+        purchase_order_id,
+        definitive_purchase_entry_id,
         source_file_name,
         status,
         match_summary,
@@ -650,6 +835,14 @@ export async function getImportById(
         product_id,
         match_status,
         match_notes,
+        gross_unit_cost,
+        freight_allocated,
+        insurance_allocated,
+        other_expenses_allocated,
+        discount_allocated,
+        landed_total_cost,
+        landed_unit_cost,
+        weight_kg,
         created_at,
         updated_at
       FROM dbo.purchase_entry_import_items
@@ -707,6 +900,33 @@ export async function updateImportFinancial(
         chart_account_id = @chart_account_id,
         cost_center_id = @cost_center_id,
         payment_term_id = @payment_term_id,
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND id = @id
+        AND status NOT IN ('CONFIRMED', 'CANCELED')
+    `);
+}
+
+export async function updateImportLogistics(
+  companyId: number,
+  id: number,
+  input: UpdateImportLogisticsInput,
+) {
+  const pool = await getPool();
+
+  await pool
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .input("carrier_id", input.carrierId ?? null)
+    .input("carrier_vehicle_id", input.carrierVehicleId ?? null)
+    .input("freight_mode", input.freightMode ?? null)
+    .query(`
+      UPDATE dbo.purchase_entry_imports
+      SET
+        carrier_id = @carrier_id,
+        carrier_vehicle_id = @carrier_vehicle_id,
+        freight_mode = @freight_mode,
         updated_at = SYSUTCDATETIME()
       WHERE company_id = @company_id
         AND id = @id
@@ -795,8 +1015,7 @@ export async function updateImportItem(
 
   const quantity = input.quantity ?? Number(row.quantity);
   const unitPrice = input.unitPrice ?? Number(row.unit_price);
-  const totalPrice =
-    input.totalPrice ?? Number((quantity * unitPrice).toFixed(2));
+  const totalPrice = input.totalPrice ?? Number((quantity * unitPrice).toFixed(2));
 
   await pool
     .request()
@@ -820,6 +1039,7 @@ export async function updateImportItem(
     `);
 
   await recalcImportTotals(companyId, id);
+  await recalculateImportItemAllocations(companyId, id);
 }
 
 export async function updateImportInstallment(
@@ -851,14 +1071,13 @@ export async function updateImportInstallment(
   await recalcImportTotals(companyId, id, false);
 }
 
-export async function recalcImportTotals(
+async function recalcImportTotalsCore(
+  executor: SqlExecutor,
   companyId: number,
   id: number,
   syncInstallmentsFromItems = true,
 ) {
-  const pool = await getPool();
-
-  const itemsResult = await pool
+  const itemsResult = await executor
     .request()
     .input("company_id", companyId)
     .input("id", id)
@@ -872,13 +1091,20 @@ export async function recalcImportTotals(
 
   const productsAmount = Number(itemsResult.recordset[0]?.products_amount ?? 0);
 
-  const headerResult = await pool
+  const headerResult = await executor
     .request()
     .input("company_id", companyId)
     .input("id", id)
-    .query<{ freight_amount: number; discount_amount: number }>(`
+    .query<{
+      freight_amount: number;
+      insurance_amount: number;
+      other_expenses_amount: number;
+      discount_amount: number;
+    }>(`
       SELECT
         freight_amount,
+        insurance_amount,
+        other_expenses_amount,
         discount_amount
       FROM dbo.purchase_entry_imports
       WHERE company_id = @company_id
@@ -886,10 +1112,23 @@ export async function recalcImportTotals(
     `);
 
   const freightAmount = Number(headerResult.recordset[0]?.freight_amount ?? 0);
+  const insuranceAmount = Number(headerResult.recordset[0]?.insurance_amount ?? 0);
+  const otherExpensesAmount = Number(
+    headerResult.recordset[0]?.other_expenses_amount ?? 0,
+  );
   const discountAmount = Number(headerResult.recordset[0]?.discount_amount ?? 0);
-  const totalAmount = Number((productsAmount + freightAmount - discountAmount).toFixed(2));
 
-  await pool
+  const totalAmount = Number(
+    (
+      productsAmount +
+      freightAmount +
+      insuranceAmount +
+      otherExpensesAmount -
+      discountAmount
+    ).toFixed(2),
+  );
+
+  await executor
     .request()
     .input("company_id", companyId)
     .input("id", id)
@@ -906,7 +1145,7 @@ export async function recalcImportTotals(
     `);
 
   if (syncInstallmentsFromItems) {
-    const instCountResult = await pool
+    const instCountResult = await executor
       .request()
       .input("company_id", companyId)
       .input("id", id)
@@ -920,7 +1159,7 @@ export async function recalcImportTotals(
     const count = Number(instCountResult.recordset[0]?.cnt ?? 0);
 
     if (count === 1) {
-      await pool
+      await executor
         .request()
         .input("company_id", companyId)
         .input("id", id)
@@ -935,6 +1174,212 @@ export async function recalcImportTotals(
         `);
     }
   }
+}
+
+export async function recalcImportTotals(
+  companyId: number,
+  id: number,
+  syncInstallmentsFromItems = true,
+) {
+  const pool = await getPool();
+  await recalcImportTotalsCore(pool, companyId, id, syncInstallmentsFromItems);
+}
+
+async function recalculateImportItemAllocationsCore(
+  executor: SqlExecutor,
+  companyId: number,
+  id: number,
+) {
+  const headerResult = await executor
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .query<{
+      allocation_method: "VALUE" | "QUANTITY" | "WEIGHT" | "MANUAL";
+      freight_amount: number;
+      insurance_amount: number;
+      other_expenses_amount: number;
+      discount_amount: number;
+    }>(`
+      SELECT TOP 1
+        allocation_method,
+        freight_amount,
+        insurance_amount,
+        other_expenses_amount,
+        discount_amount
+      FROM dbo.purchase_entry_imports
+      WHERE company_id = @company_id
+        AND id = @id
+    `);
+
+  const header = headerResult.recordset[0];
+  if (!header) {
+    throw new Error("Importação não encontrada.");
+  }
+
+  const itemsResult = await executor
+    .request()
+    .input("company_id", companyId)
+    .input("id", id)
+    .query<PurchaseEntryImportItemRow>(`
+      SELECT
+        id,
+        import_id,
+        company_id,
+        line_no,
+        supplier_code,
+        ean,
+        description,
+        ncm,
+        cfop,
+        uom,
+        quantity,
+        unit_price,
+        total_price,
+        product_id,
+        match_status,
+        match_notes,
+        gross_unit_cost,
+        freight_allocated,
+        insurance_allocated,
+        other_expenses_allocated,
+        discount_allocated,
+        landed_total_cost,
+        landed_unit_cost,
+        weight_kg,
+        created_at,
+        updated_at
+      FROM dbo.purchase_entry_import_items
+      WHERE company_id = @company_id
+        AND import_id = @id
+      ORDER BY line_no
+    `);
+
+  const items = itemsResult.recordset;
+  if (items.length === 0) return;
+
+  if (header.allocation_method === "MANUAL") {
+    for (const item of items) {
+      const landedTotalCost = Number(
+        (
+          Number(item.total_price) +
+          Number(item.freight_allocated ?? 0) +
+          Number(item.insurance_allocated ?? 0) +
+          Number(item.other_expenses_allocated ?? 0) -
+          Number(item.discount_allocated ?? 0)
+        ).toFixed(2),
+      );
+
+      const landedUnitCost =
+        Number(item.quantity) > 0
+          ? Number((landedTotalCost / Number(item.quantity)).toFixed(6))
+          : 0;
+
+      await executor
+        .request()
+        .input("item_id", item.id)
+        .input("gross_unit_cost", Number(item.unit_price))
+        .input("landed_total_cost", landedTotalCost)
+        .input("landed_unit_cost", landedUnitCost)
+        .query(`
+          UPDATE dbo.purchase_entry_import_items
+          SET
+            gross_unit_cost = @gross_unit_cost,
+            landed_total_cost = @landed_total_cost,
+            landed_unit_cost = @landed_unit_cost,
+            updated_at = SYSUTCDATETIME()
+          WHERE id = @item_id
+        `);
+    }
+
+    return;
+  }
+
+  const bases = items.map((item) => {
+    if (header.allocation_method === "QUANTITY") {
+      return Number(item.quantity);
+    }
+
+    if (header.allocation_method === "WEIGHT") {
+      return Number(item.weight_kg ?? 0);
+    }
+
+    return Number(item.total_price);
+  });
+
+  const baseSum = bases.reduce((sum, x) => sum + x, 0);
+
+  const fallbackBases =
+    header.allocation_method === "WEIGHT" && baseSum <= 0
+      ? items.map((item) => Number(item.total_price))
+      : bases;
+
+  const fallbackBaseSum = fallbackBases.reduce((sum, x) => sum + x, 0);
+
+  function alloc(total: number, base: number) {
+    if (!fallbackBaseSum || fallbackBaseSum <= 0) return 0;
+    return Number(((total * base) / fallbackBaseSum).toFixed(2));
+  }
+
+  for (let index = 0; index < items.length; index++) {
+    const item = items[index];
+    const base = fallbackBases[index];
+
+    const freightAllocated = alloc(Number(header.freight_amount ?? 0), base);
+    const insuranceAllocated = alloc(Number(header.insurance_amount ?? 0), base);
+    const otherExpensesAllocated = alloc(
+      Number(header.other_expenses_amount ?? 0),
+      base,
+    );
+    const discountAllocated = alloc(Number(header.discount_amount ?? 0), base);
+
+    const landedTotalCost = Number(
+      (
+        Number(item.total_price) +
+        freightAllocated +
+        insuranceAllocated +
+        otherExpensesAllocated -
+        discountAllocated
+      ).toFixed(2),
+    );
+
+    const landedUnitCost =
+      Number(item.quantity) > 0
+        ? Number((landedTotalCost / Number(item.quantity)).toFixed(6))
+        : 0;
+
+    await executor
+      .request()
+      .input("item_id", item.id)
+      .input("gross_unit_cost", Number(item.unit_price))
+      .input("freight_allocated", freightAllocated)
+      .input("insurance_allocated", insuranceAllocated)
+      .input("other_expenses_allocated", otherExpensesAllocated)
+      .input("discount_allocated", discountAllocated)
+      .input("landed_total_cost", landedTotalCost)
+      .input("landed_unit_cost", landedUnitCost)
+      .query(`
+        UPDATE dbo.purchase_entry_import_items
+        SET
+          gross_unit_cost = @gross_unit_cost,
+          freight_allocated = @freight_allocated,
+          insurance_allocated = @insurance_allocated,
+          other_expenses_allocated = @other_expenses_allocated,
+          discount_allocated = @discount_allocated,
+          landed_total_cost = @landed_total_cost,
+          landed_unit_cost = @landed_unit_cost,
+          updated_at = SYSUTCDATETIME()
+        WHERE id = @item_id
+      `);
+  }
+}
+
+export async function recalculateImportItemAllocations(
+  companyId: number,
+  id: number,
+) {
+  const pool = await getPool();
+  await recalculateImportItemAllocationsCore(pool, companyId, id);
 }
 
 export async function getImportPendingCounts(companyId: number, id: number) {
@@ -1060,30 +1505,8 @@ export async function createSupplierFromImport(
     throw new Error("Importação não encontrada.");
   }
 
-  function clean(value: string | null | undefined, maxChars: number) {
-    const v = (value ?? "").trim();
-    if (!v) return null;
-    return v.slice(0, maxChars);
-  }
-
-  function onlyDigits(value: string | null | undefined) {
-    return (value ?? "").replace(/\D/g, "");
-  }
-
-  function normalizeCountry(value: string | null | undefined) {
-    const raw = (value ?? "").trim().toUpperCase();
-    if (!raw) return "BR";
-    if (raw === "BR" || raw === "BRA" || raw === "BRASIL" || raw === "BRAZIL") {
-      return "BR";
-    }
-    return raw.slice(0, 2);
-  }
-
   const document = onlyDigits(header.supplier_document);
-  const supplierName = clean(
-    input?.overwriteName?.trim() || header.supplier_name,
-    160,
-  );
+  const supplierName = clean(input?.overwriteName?.trim() || header.supplier_name, 160);
 
   if (!supplierName) {
     throw new Error("Nome do fornecedor não encontrado no XML.");
@@ -1110,7 +1533,6 @@ export async function createSupplierFromImport(
   }
 
   const personType = document.length === 14 ? "PJ" : "PF";
-
   const ie = clean(header.supplier_ie, 30);
 
   const billingAddressLine1 = clean(header.supplier_address_line1, 120);
@@ -1226,6 +1648,14 @@ export async function createProductFromImportItem(
       ncm: string | null;
       uom: string | null;
       unit_price: number;
+      gross_unit_cost: number;
+      freight_allocated: number;
+      insurance_allocated: number;
+      other_expenses_allocated: number;
+      discount_allocated: number;
+      landed_total_cost: number;
+      landed_unit_cost: number;
+      weight_kg: number | null;
       product_id: number | null;
     }>(`
       SELECT TOP 1
@@ -1234,6 +1664,14 @@ export async function createProductFromImportItem(
         ncm,
         uom,
         unit_price,
+        gross_unit_cost,
+        freight_allocated,
+        insurance_allocated,
+        other_expenses_allocated,
+        discount_allocated,
+        landed_total_cost,
+        landed_unit_cost,
+        weight_kg,
         product_id
       FROM dbo.purchase_entry_import_items
       WHERE company_id = @company_id
@@ -1271,7 +1709,12 @@ export async function createProductFromImportItem(
       : null;
 
   if (existingByEan?.recordset[0]?.id) {
-    await updateImportItemProduct(companyId, importId, itemId, existingByEan.recordset[0].id);
+    await updateImportItemProduct(
+      companyId,
+      importId,
+      itemId,
+      existingByEan.recordset[0].id,
+    );
     return existingByEan.recordset[0].id;
   }
 
@@ -1379,6 +1822,225 @@ export async function createProductFromImportItem(
   return productId;
 }
 
+export async function materializePurchaseEntry(
+  tx: Transaction,
+  companyId: number,
+  userId: number,
+  header: PurchaseEntryImportRow,
+  items: PurchaseEntryImportItemRow[],
+  installments: PurchaseEntryImportInstallmentRow[],
+) {
+  const entryResult = await tx
+    .request()
+    .input("company_id", companyId)
+    .input("source_import_id", header.id)
+    .input("origin_type", "XML_IMPORT")
+    .input("purchase_order_id", header.purchase_order_id ?? null)
+    .input("supplier_id", header.supplier_id)
+    .input("carrier_id", header.carrier_id ?? null)
+    .input("carrier_vehicle_id", header.carrier_vehicle_id ?? null)
+    .input("access_key", header.access_key)
+    .input("invoice_number", header.invoice_number ?? null)
+    .input("invoice_series", header.invoice_series ?? null)
+    .input("issue_date", header.issue_date ?? null)
+    .input("entry_date", header.issue_date ?? null)
+    .input("freight_mode", header.freight_mode ?? null)
+    .input("products_amount", header.products_amount)
+    .input("freight_amount", header.freight_amount)
+    .input("insurance_amount", header.insurance_amount)
+    .input("other_expenses_amount", header.other_expenses_amount)
+    .input("discount_amount", header.discount_amount)
+    .input("total_amount", header.total_amount)
+    .input("payment_term_id", header.payment_term_id ?? null)
+    .input("chart_account_id", header.chart_account_id ?? null)
+    .input("cost_center_id", header.cost_center_id ?? null)
+    .input("allocation_method", header.allocation_method)
+    .input("cost_policy", header.cost_policy)
+    .input("price_policy", header.price_policy)
+    .input("markup_percent", header.markup_percent ?? null)
+    .input("margin_percent", header.margin_percent ?? null)
+    .input("accounts_payable_id", header.accounts_payable_id ?? null)
+    .input("fiscal_document_id", header.fiscal_document_id ?? null)
+    .input("status", "CONFIRMED")
+    .input("confirmed_by_user_id", userId)
+    .query<{ id: number }>(`
+      INSERT INTO dbo.purchase_entries (
+        company_id,
+        source_import_id,
+        origin_type,
+        purchase_order_id,
+        supplier_id,
+        carrier_id,
+        carrier_vehicle_id,
+        access_key,
+        invoice_number,
+        invoice_series,
+        issue_date,
+        entry_date,
+        freight_mode,
+        products_amount,
+        freight_amount,
+        insurance_amount,
+        other_expenses_amount,
+        discount_amount,
+        total_amount,
+        payment_term_id,
+        chart_account_id,
+        cost_center_id,
+        allocation_method,
+        cost_policy,
+        price_policy,
+        markup_percent,
+        margin_percent,
+        accounts_payable_id,
+        fiscal_document_id,
+        status,
+        confirmed_by_user_id
+      )
+      OUTPUT INSERTED.id
+      VALUES (
+        @company_id,
+        @source_import_id,
+        @origin_type,
+        @purchase_order_id,
+        @supplier_id,
+        @carrier_id,
+        @carrier_vehicle_id,
+        @access_key,
+        @invoice_number,
+        @invoice_series,
+        @issue_date,
+        COALESCE(@entry_date, SYSUTCDATETIME()),
+        @freight_mode,
+        @products_amount,
+        @freight_amount,
+        @insurance_amount,
+        @other_expenses_amount,
+        @discount_amount,
+        @total_amount,
+        @payment_term_id,
+        @chart_account_id,
+        @cost_center_id,
+        @allocation_method,
+        @cost_policy,
+        @price_policy,
+        @markup_percent,
+        @margin_percent,
+        @accounts_payable_id,
+        @fiscal_document_id,
+        @status,
+        @confirmed_by_user_id
+      )
+    `);
+
+  const purchaseEntryId = Number(entryResult.recordset[0].id);
+
+  for (const item of items) {
+    await tx
+      .request()
+      .input("purchase_entry_id", purchaseEntryId)
+      .input("company_id", companyId)
+      .input("source_import_item_id", item.id)
+      .input("line_no", item.line_no)
+      .input("product_id", item.product_id)
+      .input("supplier_code", item.supplier_code ?? null)
+      .input("ean", item.ean ?? null)
+      .input("description_snapshot", item.description)
+      .input("ncm_snapshot", item.ncm ?? null)
+      .input("cfop_snapshot", item.cfop ?? null)
+      .input("uom_snapshot", item.uom ?? null)
+      .input("quantity", item.quantity)
+      .input("unit_price", item.unit_price)
+      .input("total_price", item.total_price)
+      .input("freight_allocated", item.freight_allocated ?? 0)
+      .input("insurance_allocated", item.insurance_allocated ?? 0)
+      .input("other_expenses_allocated", item.other_expenses_allocated ?? 0)
+      .input("discount_allocated", item.discount_allocated ?? 0)
+      .input("landed_total_cost", item.landed_total_cost ?? item.total_price)
+      .input("landed_unit_cost", item.landed_unit_cost ?? item.unit_price)
+      .query(`
+        INSERT INTO dbo.purchase_entry_items (
+          purchase_entry_id,
+          company_id,
+          source_import_item_id,
+          line_no,
+          product_id,
+          supplier_code,
+          ean,
+          description_snapshot,
+          ncm_snapshot,
+          cfop_snapshot,
+          uom_snapshot,
+          quantity,
+          unit_price,
+          total_price,
+          freight_allocated,
+          insurance_allocated,
+          other_expenses_allocated,
+          discount_allocated,
+          landed_total_cost,
+          landed_unit_cost
+        )
+        VALUES (
+          @purchase_entry_id,
+          @company_id,
+          @source_import_item_id,
+          @line_no,
+          @product_id,
+          @supplier_code,
+          @ean,
+          @description_snapshot,
+          @ncm_snapshot,
+          @cfop_snapshot,
+          @uom_snapshot,
+          @quantity,
+          @unit_price,
+          @total_price,
+          @freight_allocated,
+          @insurance_allocated,
+          @other_expenses_allocated,
+          @discount_allocated,
+          @landed_total_cost,
+          @landed_unit_cost
+        )
+      `);
+  }
+
+  for (const inst of installments) {
+    await tx
+      .request()
+      .input("purchase_entry_id", purchaseEntryId)
+      .input("company_id", companyId)
+      .input("source_import_installment_id", inst.id || null)
+      .input("installment_no", inst.line_no)
+      .input("due_date", inst.due_date)
+      .input("amount", inst.amount)
+      .input("account_payable_id", inst.accounts_payable_id ?? null)
+      .query(`
+        INSERT INTO dbo.purchase_entry_installments (
+          purchase_entry_id,
+          company_id,
+          source_import_installment_id,
+          installment_no,
+          due_date,
+          amount,
+          account_payable_id
+        )
+        VALUES (
+          @purchase_entry_id,
+          @company_id,
+          @source_import_installment_id,
+          @installment_no,
+          @due_date,
+          @amount,
+          @account_payable_id
+        )
+      `);
+  }
+
+  return purchaseEntryId;
+}
+
 export async function confirmImport(companyId: number, userId: number, id: number) {
   const pool = await getPool();
   const tx = pool.transaction();
@@ -1415,7 +2077,22 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
           total_amount,
           products_amount,
           freight_amount,
+          insurance_amount,
+          other_expenses_amount,
           discount_amount,
+          carrier_id,
+          carrier_vehicle_id,
+          freight_mode,
+          carrier_name_xml,
+          carrier_document_xml,
+          carrier_ie_xml,
+          allocation_method,
+          cost_policy,
+          price_policy,
+          markup_percent,
+          margin_percent,
+          purchase_order_id,
+          definitive_purchase_entry_id,
           source_file_name,
           status,
           match_summary,
@@ -1459,6 +2136,14 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
           product_id,
           match_status,
           match_notes,
+          gross_unit_cost,
+          freight_allocated,
+          insurance_allocated,
+          other_expenses_allocated,
+          discount_allocated,
+          landed_total_cost,
+          landed_unit_cost,
+          weight_kg,
           created_at,
           updated_at
         FROM dbo.purchase_entry_import_items
@@ -1472,6 +2157,109 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
     if (items.some((x) => !x.product_id)) {
       throw new Error("Existem itens sem produto vinculado.");
     }
+
+    await recalcImportTotalsCore(tx, companyId, id);
+    await recalculateImportItemAllocationsCore(tx, companyId, id);
+
+    const refreshedHeaderResult = await tx
+      .request()
+      .input("company_id", companyId)
+      .input("id", id)
+      .query<PurchaseEntryImportRow>(`
+        SELECT TOP 1
+          id,
+          company_id,
+          access_key,
+          invoice_number,
+          invoice_series,
+          issue_date,
+          supplier_document,
+          supplier_name,
+          supplier_ie,
+          supplier_id,
+          supplier_address_line1,
+          supplier_address_line2,
+          supplier_district,
+          supplier_city,
+          supplier_state,
+          supplier_zip_code,
+          supplier_country,
+          chart_account_id,
+          cost_center_id,
+          payment_term_id,
+          total_amount,
+          products_amount,
+          freight_amount,
+          insurance_amount,
+          other_expenses_amount,
+          discount_amount,
+          carrier_id,
+          carrier_vehicle_id,
+          freight_mode,
+          carrier_name_xml,
+          carrier_document_xml,
+          carrier_ie_xml,
+          allocation_method,
+          cost_policy,
+          price_policy,
+          markup_percent,
+          margin_percent,
+          purchase_order_id,
+          definitive_purchase_entry_id,
+          source_file_name,
+          status,
+          match_summary,
+          error_message,
+          accounts_payable_id,
+          fiscal_document_id,
+          confirmed_at,
+          confirmed_by_user_id,
+          created_at,
+          updated_at
+        FROM dbo.purchase_entry_imports
+        WHERE company_id = @company_id
+          AND id = @id
+      `);
+
+    const refreshedItemsResult = await tx
+      .request()
+      .input("company_id", companyId)
+      .input("id", id)
+      .query<PurchaseEntryImportItemRow>(`
+        SELECT
+          id,
+          import_id,
+          company_id,
+          line_no,
+          supplier_code,
+          ean,
+          description,
+          ncm,
+          cfop,
+          uom,
+          quantity,
+          unit_price,
+          total_price,
+          product_id,
+          match_status,
+          match_notes,
+          gross_unit_cost,
+          freight_allocated,
+          insurance_allocated,
+          other_expenses_allocated,
+          discount_allocated,
+          landed_total_cost,
+          landed_unit_cost,
+          weight_kg,
+          created_at,
+          updated_at
+        FROM dbo.purchase_entry_import_items
+        WHERE company_id = @company_id
+          AND import_id = @id
+        ORDER BY line_no
+      `);
+
+    const refreshedItems = refreshedItemsResult.recordset;
 
     const installmentsResult = await tx
       .request()
@@ -1499,13 +2287,15 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
 
     const issueDateValue = header.issue_date ? new Date(header.issue_date) : null;
     if (!issueDateValue || Number.isNaN(issueDateValue.getTime())) {
-      throw new Error("Importação sem data de emissão válida para gerar estoque e contas a pagar.");
+      throw new Error(
+        "Importação sem data de emissão válida para gerar estoque e contas a pagar.",
+      );
     }
 
     const issueDateSql = issueDateValue.toISOString().slice(0, 10);
 
-    for (const item of items) {
-      const qty = Math.round(Number(item.quantity));
+    for (const item of refreshedItems) {
+      const qty = Number(item.quantity);
 
       if (!qty || qty <= 0) {
         throw new Error(`Item ${item.id} com quantidade inválida para entrada de estoque.`);
@@ -1538,7 +2328,7 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
               line_no: 1,
               installment_number: "001",
               due_date: issueDateSql,
-              amount: Number(header.total_amount),
+              amount: Number(refreshedHeaderResult.recordset[0].total_amount),
               accounts_payable_id: null,
               created_at: "",
               updated_at: null,
@@ -1633,17 +2423,33 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
       }
     }
 
+    const refreshedHeader = {
+      ...refreshedHeaderResult.recordset[0],
+      accounts_payable_id: firstAccountsPayableId,
+    } as PurchaseEntryImportRow;
+
+    const definitivePurchaseEntryId = await materializePurchaseEntry(
+      tx,
+      companyId,
+      userId,
+      refreshedHeader,
+      refreshedItems,
+      effectiveInstallments,
+    );
+
     await tx
       .request()
       .input("company_id", companyId)
       .input("id", id)
       .input("accounts_payable_id", firstAccountsPayableId)
+      .input("definitive_purchase_entry_id", definitivePurchaseEntryId)
       .input("user_id", userId)
       .query(`
         UPDATE dbo.purchase_entry_imports
         SET
           status = 'CONFIRMED',
           accounts_payable_id = @accounts_payable_id,
+          definitive_purchase_entry_id = @definitive_purchase_entry_id,
           confirmed_at = SYSUTCDATETIME(),
           confirmed_by_user_id = @user_id,
           updated_at = SYSUTCDATETIME()
@@ -1652,7 +2458,11 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
       `);
 
     await tx.commit();
-    return { accountsPayableId: firstAccountsPayableId };
+
+    return {
+      accountsPayableId: firstAccountsPayableId,
+      purchaseEntryId: definitivePurchaseEntryId,
+    };
   } catch (err: any) {
     try {
       await tx.rollback();

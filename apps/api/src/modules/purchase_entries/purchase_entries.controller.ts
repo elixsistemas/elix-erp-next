@@ -13,11 +13,14 @@ import {
   UpdateImportFinancialSchema,
   UpdateImportInstallmentSchema,
   UpdateImportItemSchema,
+  UpdateImportLogisticsSchema,
 } from "./purchase_entries.schema";
 
 function getAuthOrThrow(req: FastifyRequest) {
   if (!req.auth) {
-    const err = new Error("Não autenticado.") as Error & { statusCode?: number };
+    const err = new Error("Não autenticado.") as Error & {
+      statusCode?: number;
+    };
     err.statusCode = 401;
     throw err;
   }
@@ -49,6 +52,7 @@ export async function listImports(req: FastifyRequest, rep: FastifyReply) {
   try {
     const auth = getAuthOrThrow(req);
     const query = PurchaseEntryListQuerySchema.parse(req.query);
+
     const data = await service.listImports(auth.companyId, query);
     return rep.send(data);
   } catch (err: any) {
@@ -60,6 +64,7 @@ export async function getImportById(req: FastifyRequest, rep: FastifyReply) {
   try {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryIdParamsSchema.parse(req.params);
+
     const data = await service.getImportById(auth.companyId, params.id);
 
     if (!data) {
@@ -90,6 +95,7 @@ export async function importXml(req: FastifyRequest, rep: FastifyReply) {
   try {
     const auth = getAuthOrThrow(req);
     const body = ImportXmlSchema.parse(req.body);
+
     const data = await service.importXml(auth.companyId, auth.userId, body);
     return rep.send(data);
   } catch (err: any) {
@@ -102,10 +108,24 @@ export async function updateImportFinancial(req: FastifyRequest, rep: FastifyRep
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryIdParamsSchema.parse(req.params);
     const body = UpdateImportFinancialSchema.parse(req.body);
+
     const data = await service.updateImportFinancial(auth.companyId, params.id, body);
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao atualizar classificação financeira.");
+  }
+}
+
+export async function updateImportLogistics(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const params = PurchaseEntryIdParamsSchema.parse(req.params);
+    const body = UpdateImportLogisticsSchema.parse(req.body);
+
+    const data = await service.updateImportLogistics(auth.companyId, params.id, body);
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao atualizar dados logísticos.");
   }
 }
 
@@ -114,6 +134,7 @@ export async function matchSupplier(req: FastifyRequest, rep: FastifyReply) {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryIdParamsSchema.parse(req.params);
     const body = MatchSupplierSchema.parse(req.body);
+
     const data = await service.matchSupplier(auth.companyId, params.id, body);
     return rep.send(data);
   } catch (err: any) {
@@ -121,11 +142,15 @@ export async function matchSupplier(req: FastifyRequest, rep: FastifyReply) {
   }
 }
 
-export async function createSupplierFromImport(req: FastifyRequest, rep: FastifyReply) {
+export async function createSupplierFromImport(
+  req: FastifyRequest,
+  rep: FastifyReply,
+) {
   try {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryIdParamsSchema.parse(req.params);
     const body = CreateSupplierFromImportSchema.parse(req.body);
+
     const data = await service.createSupplierFromImport(auth.companyId, params.id, body);
     return rep.send(data);
   } catch (err: any) {
@@ -138,24 +163,36 @@ export async function matchProduct(req: FastifyRequest, rep: FastifyReply) {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryItemParamsSchema.parse(req.params);
     const body = MatchProductSchema.parse(req.body);
-    const data = await service.matchProduct(auth.companyId, params.id, params.itemId, body);
+
+    const data = await service.matchProduct(
+      auth.companyId,
+      params.id,
+      params.itemId,
+      body,
+    );
+
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao vincular produto.");
   }
 }
 
-export async function createProductFromImportItem(req: FastifyRequest, rep: FastifyReply) {
+export async function createProductFromImportItem(
+  req: FastifyRequest,
+  rep: FastifyReply,
+) {
   try {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryItemParamsSchema.parse(req.params);
     const body = CreateProductFromImportItemSchema.parse(req.body);
+
     const data = await service.createProductFromImportItem(
       auth.companyId,
       params.id,
       params.itemId,
       body,
     );
+
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao criar produto a partir do item.");
@@ -167,24 +204,36 @@ export async function updateImportItem(req: FastifyRequest, rep: FastifyReply) {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryItemParamsSchema.parse(req.params);
     const body = UpdateImportItemSchema.parse(req.body);
-    const data = await service.updateImportItem(auth.companyId, params.id, params.itemId, body);
+
+    const data = await service.updateImportItem(
+      auth.companyId,
+      params.id,
+      params.itemId,
+      body,
+    );
+
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao atualizar item da importação.");
   }
 }
 
-export async function updateImportInstallment(req: FastifyRequest, rep: FastifyReply) {
+export async function updateImportInstallment(
+  req: FastifyRequest,
+  rep: FastifyReply,
+) {
   try {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryInstallmentParamsSchema.parse(req.params);
     const body = UpdateImportInstallmentSchema.parse(req.body);
+
     const data = await service.updateImportInstallment(
       auth.companyId,
       params.id,
       params.installmentId,
       body,
     );
+
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao atualizar parcela da importação.");
@@ -195,6 +244,7 @@ export async function confirmImport(req: FastifyRequest, rep: FastifyReply) {
   try {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryIdParamsSchema.parse(req.params);
+
     const data = await service.confirmImport(auth.companyId, auth.userId, params.id);
     return rep.send(data);
   } catch (err: any) {
@@ -206,6 +256,7 @@ export async function cancelImport(req: FastifyRequest, rep: FastifyReply) {
   try {
     const auth = getAuthOrThrow(req);
     const params = PurchaseEntryIdParamsSchema.parse(req.params);
+
     const data = await service.cancelImport(auth.companyId, params.id);
     return rep.send(data);
   } catch (err: any) {

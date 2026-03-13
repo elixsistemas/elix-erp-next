@@ -30,101 +30,113 @@ export default function PurchaseEntryImportsPage() {
   const st = usePurchaseEntryImports();
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Entradas de compra</h1>
+          <h1 className="text-2xl font-semibold">Entradas de compra</h1>
           <p className="text-sm text-muted-foreground">
             Importação de XML com staging e confirmação operacional.
           </p>
         </div>
 
-        <Button asChild>
-          <Link to="/compras/entradas/importar-xml">Importar XML</Link>
+        <div className="flex items-center gap-2">
+          <Link to="/compras/entradas/importar">
+            <Button>Importar XML</Button>
+          </Link>
+        </div>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
+        <input
+          className="rounded-md border px-3 py-2 text-sm"
+          placeholder="Buscar por chave, fornecedor, número..."
+          value={st.q}
+          onChange={(e) => st.setQ(e.target.value)}
+        />
+
+        <select
+          className="rounded-md border px-3 py-2 text-sm"
+          value={st.status}
+          onChange={(e) => st.setStatus(e.target.value as any)}
+        >
+          <option value="">Todos os status</option>
+          <option value="MATCH_PENDING">Pendentes</option>
+          <option value="READY">Prontas</option>
+          <option value="CONFIRMED">Confirmadas</option>
+          <option value="ERROR">Erro</option>
+          <option value="CANCELED">Canceladas</option>
+        </select>
+
+        <Button variant="outline" onClick={() => void st.reload()} disabled={st.loading}>
+          Recarregar
         </Button>
       </div>
 
-      <div className="rounded-xl border p-4">
-        <div className="grid gap-3 md:grid-cols-3">
-          <input
-            className="h-10 rounded-md border px-3"
-            placeholder="Buscar por chave, fornecedor ou número"
-            value={st.q}
-            onChange={(e) => st.setQ(e.target.value)}
-          />
-
-          <select
-            className="h-10 rounded-md border px-3"
-            value={st.status}
-            onChange={(e) => st.setStatus(e.target.value as any)}
-          >
-            <option value="">Todos os status</option>
-            <option value="MATCH_PENDING">Pendentes</option>
-            <option value="READY">Prontas</option>
-            <option value="CONFIRMED">Confirmadas</option>
-            <option value="ERROR">Erro</option>
-            <option value="CANCELED">Canceladas</option>
-          </select>
-
-          <Button variant="outline" onClick={st.reload}>
-            Recarregar
-          </Button>
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr className="text-left">
-                <th className="px-4 py-3">Chave</th>
-                <th className="px-4 py-3">Fornecedor XML</th>
-                <th className="px-4 py-3">Número/Série</th>
-                <th className="px-4 py-3">Emissão</th>
-                <th className="px-4 py-3">Valor</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Ações</th>
-              </tr>
-            </thead>
-            <tbody>
-              {st.loading ? (
-                <tr>
-                  <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
-                    Carregando...
-                  </td>
+      <div className="rounded-lg border">
+        {st.loading ? (
+          <div className="p-6 text-sm text-muted-foreground">Carregando...</div>
+        ) : st.rows.length === 0 ? (
+          <div className="p-6 text-sm text-muted-foreground">
+            Nenhuma importação encontrada.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-left">
+                  <th className="px-3 py-2 font-medium">Chave</th>
+                  <th className="px-3 py-2 font-medium">Fornecedor XML</th>
+                  <th className="px-3 py-2 font-medium">Número/Série</th>
+                  <th className="px-3 py-2 font-medium">Emissão</th>
+                  <th className="px-3 py-2 font-medium">Valor</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Ações</th>
                 </tr>
-              ) : st.rows.length === 0 ? (
-                <tr>
-                  <td className="px-4 py-6 text-muted-foreground" colSpan={7}>
-                    Nenhuma importação encontrada.
-                  </td>
-                </tr>
-              ) : (
-                st.rows.map((row) => (
-                  <tr key={row.id} className="border-t">
-                    <td className="px-4 py-3">{row.access_key}</td>
-                    <td className="px-4 py-3">{row.supplier_name ?? "—"}</td>
-                    <td className="px-4 py-3">
+              </thead>
+
+              <tbody>
+                {st.rows.map((row) => (
+                  <tr key={row.id} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 font-mono text-xs">{row.access_key}</td>
+
+                    <td className="px-3 py-2">
+                      <div>{row.supplier_name ?? "—"}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {row.supplier_document ?? "—"}
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2">
                       {row.invoice_number ?? "—"} / {row.invoice_series ?? "—"}
                     </td>
-                    <td className="px-4 py-3">{row.issue_date ?? "—"}</td>
-                    <td className="px-4 py-3">{money(row.total_amount)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeClass(row.status)}`}>
+
+                    <td className="px-3 py-2">{row.issue_date ?? "—"}</td>
+
+                    <td className="px-3 py-2">{money(row.total_amount)}</td>
+
+                    <td className="px-3 py-2">
+                      <span
+                        className={`inline-flex rounded px-2 py-1 text-xs font-medium ${badgeClass(
+                          row.status,
+                        )}`}
+                      >
                         {row.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <Button asChild size="sm" variant="outline">
-                        <Link to={`/compras/entradas/${row.id}`}>Abrir</Link>
-                      </Button>
+
+                    <td className="px-3 py-2">
+                      <Link to={`/compras/entradas/${row.id}`}>
+                        <Button variant="outline" size="sm">
+                          Abrir
+                        </Button>
+                      </Link>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -78,19 +78,62 @@ export const UpdateImportInstallmentSchema = z.object({
   amount: z.coerce.number().positive().optional(),
 });
 
-export type PurchaseEntryImportStatus = z.infer<typeof PurchaseEntryImportStatusSchema>;
-export type PurchaseEntryItemMatchStatus = z.infer<typeof PurchaseEntryItemMatchStatusSchema>;
-export type PurchaseEntryListQuery = z.infer<typeof PurchaseEntryListQuerySchema>;
-export type PurchaseEntryIdParams = z.infer<typeof PurchaseEntryIdParamsSchema>;
-export type PurchaseEntryItemParams = z.infer<typeof PurchaseEntryItemParamsSchema>;
-export type PurchaseEntryInstallmentParams = z.infer<typeof PurchaseEntryInstallmentParamsSchema>;
+export const UpdateImportLogisticsSchema = z.object({
+  carrierId: z.coerce.number().int().positive().nullable().optional(),
+  carrierVehicleId: z.coerce.number().int().positive().nullable().optional(),
+  freightMode: z.string().trim().max(20).optional(),
+});
+
+export type PurchaseEntryImportStatus = z.infer<
+  typeof PurchaseEntryImportStatusSchema
+>;
+
+export type PurchaseEntryItemMatchStatus = z.infer<
+  typeof PurchaseEntryItemMatchStatusSchema
+>;
+
+export type PurchaseEntryListQuery = z.infer<
+  typeof PurchaseEntryListQuerySchema
+>;
+
+export type PurchaseEntryIdParams = z.infer<
+  typeof PurchaseEntryIdParamsSchema
+>;
+
+export type PurchaseEntryItemParams = z.infer<
+  typeof PurchaseEntryItemParamsSchema
+>;
+
+export type PurchaseEntryInstallmentParams = z.infer<
+  typeof PurchaseEntryInstallmentParamsSchema
+>;
+
 export type MatchSupplierInput = z.infer<typeof MatchSupplierSchema>;
+
 export type MatchProductInput = z.infer<typeof MatchProductSchema>;
+
 export type ImportXmlInput = z.infer<typeof ImportXmlSchema>;
-export type CreateSupplierFromImportInput = z.infer<typeof CreateSupplierFromImportSchema>;
+
+export type CreateSupplierFromImportInput = z.infer<
+  typeof CreateSupplierFromImportSchema
+>;
+
 export type CreateProductFromImportItemInput = z.infer<
   typeof CreateProductFromImportItemSchema
 >;
-export type UpdateImportFinancialInput = z.infer<typeof UpdateImportFinancialSchema>;
-export type UpdateImportItemInput = z.infer<typeof UpdateImportItemSchema>;
-export type UpdateImportInstallmentInput = z.infer<typeof UpdateImportInstallmentSchema>;
+
+export type UpdateImportFinancialInput = z.infer<
+  typeof UpdateImportFinancialSchema
+>;
+
+export type UpdateImportItemInput = z.infer<
+  typeof UpdateImportItemSchema
+>;
+
+export type UpdateImportInstallmentInput = z.infer<
+  typeof UpdateImportInstallmentSchema
+>;
+
+export type UpdateImportLogisticsInput = z.infer<
+  typeof UpdateImportLogisticsSchema
+>;

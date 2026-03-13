@@ -1,20 +1,35 @@
 import { useCallback, useEffect, useState } from "react";
 import { listPurchaseEntryImports } from "./purchase-entry-imports.service";
-import type { PurchaseEntryImportRow, PurchaseEntryImportStatus } from "./purchase-entry-imports.types";
+import type {
+  PurchaseEntryImportRow,
+  PurchaseEntryImportStatus,
+} from "./purchase-entry-imports.types";
 
-export function usePurchaseEntryImports() {
+type UsePurchaseEntryImportsResult = {
+  rows: PurchaseEntryImportRow[];
+  loading: boolean;
+  q: string;
+  setQ: React.Dispatch<React.SetStateAction<string>>;
+  status: "" | PurchaseEntryImportStatus;
+  setStatus: React.Dispatch<React.SetStateAction<"" | PurchaseEntryImportStatus>>;
+  reload: () => Promise<void>;
+};
+
+export function usePurchaseEntryImports(): UsePurchaseEntryImportsResult {
   const [rows, setRows] = useState<PurchaseEntryImportRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState<PurchaseEntryImportStatus | "">("");
+  const [status, setStatus] = useState<"" | PurchaseEntryImportStatus>("");
 
   const load = useCallback(async () => {
     setLoading(true);
+
     try {
       const data = await listPurchaseEntryImports({
-        q: q || undefined,
+        q: q.trim() || undefined,
         status: status || undefined,
       });
+
       setRows(data);
     } finally {
       setLoading(false);
@@ -25,8 +40,8 @@ export function usePurchaseEntryImports() {
     void load();
   }, [load]);
 
-  const reload = useCallback(() => {
-    void load();
+  const reload = useCallback(async () => {
+    await load();
   }, [load]);
 
   return {

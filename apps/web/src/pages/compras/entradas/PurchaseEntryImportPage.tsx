@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +46,9 @@ export default function PurchaseEntryImportPage() {
   const params = useParams();
   const navigate = useNavigate();
   const id = Number(params.id);
+
   const st = usePurchaseEntryImport(id);
+
   const [busy, setBusy] = useState(false);
   const [financialOptions, setFinancialOptions] = useState<FinancialOptions>({
     chartAccounts: [],
@@ -59,34 +61,48 @@ export default function PurchaseEntryImportPage() {
   }, []);
 
   const data = st.data;
-  const isLocked = data?.header.status === "CONFIRMED" || data?.header.status === "CANCELED";
-  const canConfirm =
-    !!data &&
-    !!data.header.supplier_id &&
-    data.items.every((x) => !!x.product_id);
+
+  const isLocked =
+    data?.header.status === "CONFIRMED" || data?.header.status === "CANCELED";
+
+  const canConfirm = useMemo(() => {
+    if (!data) return false;
+    return !!data.header.supplier_id && data.items.every((x) => !!x.product_id);
+  }, [data]);
 
   async function reloadAll() {
     await st.reload();
   }
 
-  async function onUpdateFinancial(field: "chartAccountId" | "costCenterId" | "paymentTermId", value: string) {
+  async function onUpdateFinancial(
+    field: "chartAccountId" | "costCenterId" | "paymentTermId",
+    value: string,
+  ) {
     if (!data) return;
+
     setBusy(true);
     try {
       await updatePurchaseEntryFinancial(id, {
         chartAccountId:
           field === "chartAccountId"
-            ? value ? Number(value) : null
+            ? value
+              ? Number(value)
+              : null
             : data.header.chart_account_id,
         costCenterId:
           field === "costCenterId"
-            ? value ? Number(value) : null
+            ? value
+              ? Number(value)
+              : null
             : data.header.cost_center_id,
         paymentTermId:
           field === "paymentTermId"
-            ? value ? Number(value) : null
+            ? value
+              ? Number(value)
+              : null
             : data.header.payment_term_id,
       });
+
       await reloadAll();
     } finally {
       setBusy(false);
@@ -136,7 +152,10 @@ export default function PurchaseEntryImportPage() {
     }
   }
 
-  async function onUpdateItem(itemId: number, payload: { quantity?: number; unitPrice?: number; totalPrice?: number }) {
+  async function onUpdateItem(
+    itemId: number,
+    payload: { quantity?: number; unitPrice?: number; totalPrice?: number },
+  ) {
     setBusy(true);
     try {
       await updatePurchaseEntryItem(id, itemId, payload);
@@ -146,7 +165,10 @@ export default function PurchaseEntryImportPage() {
     }
   }
 
-  async function onUpdateInstallment(installmentId: number, payload: { dueDate?: string; amount?: number }) {
+  async function onUpdateInstallment(
+    installmentId: number,
+    payload: { dueDate?: string; amount?: number },
+  ) {
     setBusy(true);
     try {
       await updatePurchaseEntryInstallment(id, installmentId, payload);
@@ -177,21 +199,21 @@ export default function PurchaseEntryImportPage() {
   }
 
   if (st.loading || !data) {
-    return <div className="text-sm text-muted-foreground">Carregando...</div>;
+    return <div>Carregando...</div>;
   }
 
   const { header, items, installments } = data;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Importação #{header.id}</h1>
+          <h1 className="text-2xl font-semibold">Importação #{header.id}</h1>
           <p className="text-sm text-muted-foreground">{header.access_key}</p>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeClass(header.status)}`}>
+          <span className={`rounded px-2 py-1 text-xs font-medium ${badgeClass(header.status)}`}>
             {header.status}
           </span>
 
@@ -201,200 +223,248 @@ export default function PurchaseEntryImportPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 rounded-xl border p-4 md:grid-cols-2 lg:grid-cols-4">
-        <div><div className="text-xs text-muted-foreground">Fornecedor XML</div><div className="mt-1 font-medium">{header.supplier_name ?? "—"}</div></div>
-        <div><div className="text-xs text-muted-foreground">Documento fornecedor</div><div className="mt-1 font-medium">{header.supplier_document ?? "—"}</div></div>
-        <div><div className="text-xs text-muted-foreground">NF / Série</div><div className="mt-1 font-medium">{header.invoice_number ?? "—"} / {header.invoice_series ?? "—"}</div></div>
-        <div><div className="text-xs text-muted-foreground">Emissão</div><div className="mt-1 font-medium">{header.issue_date ?? "—"}</div></div>
-        <div><div className="text-xs text-muted-foreground">Fornecedor vinculado</div><div className="mt-1 font-medium">{header.supplier_id ?? "Pendente"}</div></div>
-        <div><div className="text-xs text-muted-foreground">Produtos</div><div className="mt-1 font-medium">{money(header.products_amount)}</div></div>
-        <div><div className="text-xs text-muted-foreground">Frete</div><div className="mt-1 font-medium">{money(header.freight_amount)}</div></div>
-        <div><div className="text-xs text-muted-foreground">Total</div><div className="mt-1 font-medium">{money(header.total_amount)}</div></div>
-      </div>
-
-      <div className="rounded-xl border p-4 space-y-3">
-        <div className="text-sm font-medium">Classificação financeira</div>
-
-        <div className="grid gap-3 md:grid-cols-3">
-          <select
-            className="h-10 rounded-md border px-3"
-            value={header.chart_account_id ?? ""}
-            onChange={(e) => void onUpdateFinancial("chartAccountId", e.target.value)}
-            disabled={busy || !!isLocked}
-          >
-            <option value="">Plano de contas</option>
-            {financialOptions.chartAccounts.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.code ? `${x.code} - ` : ""}{x.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="h-10 rounded-md border px-3"
-            value={header.cost_center_id ?? ""}
-            onChange={(e) => void onUpdateFinancial("costCenterId", e.target.value)}
-            disabled={busy || !!isLocked}
-          >
-            <option value="">Centro de custo</option>
-            {financialOptions.costCenters.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.code ? `${x.code} - ` : ""}{x.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            className="h-10 rounded-md border px-3"
-            value={header.payment_term_id ?? ""}
-            onChange={(e) => void onUpdateFinancial("paymentTermId", e.target.value)}
-            disabled={busy || !!isLocked}
-          >
-            <option value="">Condição de pagamento</option>
-            {financialOptions.paymentTerms.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name}
-              </option>
-            ))}
-          </select>
+      <section className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Fornecedor XML</div>
+          <div className="font-medium">{header.supplier_name ?? "—"}</div>
         </div>
-      </div>
 
-      {installments.length > 0 && (
-        <div className="rounded-xl border p-4 space-y-3">
-          <div className="text-sm font-medium">Parcelas importadas</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Documento fornecedor</div>
+          <div className="font-medium">{header.supplier_document ?? "—"}</div>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr className="text-left">
-                  <th className="px-3 py-2">Parcela</th>
-                  <th className="px-3 py-2">Vencimento</th>
-                  <th className="px-3 py-2">Valor</th>
-                  <th className="px-3 py-2">Conta a pagar</th>
-                </tr>
-              </thead>
-              <tbody>
-                {installments.map((inst) => (
-                  <tr key={inst.id} className="border-t">
-                    <td className="px-3 py-2">{inst.installment_number ?? inst.line_no}</td>
-                    <td className="px-3 py-2">
-                      {isLocked ? (
-                        inst.due_date
-                      ) : (
-                        <input
-                          type="date"
-                          className="h-9 rounded-md border px-2"
-                          defaultValue={inst.due_date}
-                          onBlur={(e) => {
-                            if (e.target.value && e.target.value !== inst.due_date) {
-                              void onUpdateInstallment(inst.id, { dueDate: e.target.value });
-                            }
-                          }}
-                        />
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {isLocked ? (
-                        money(inst.amount)
-                      ) : (
-                        <input
-                          type="number"
-                          step="0.01"
-                          className="h-9 rounded-md border px-2"
-                          defaultValue={Number(inst.amount)}
-                          onBlur={(e) => {
-                            const value = Number(e.target.value);
-                            if (value > 0 && value !== Number(inst.amount)) {
-                              void onUpdateInstallment(inst.id, { amount: value });
-                            }
-                          }}
-                        />
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      {inst.accounts_payable_id ? `#${inst.accounts_payable_id}` : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">NF / Série</div>
+          <div className="font-medium">
+            {header.invoice_number ?? "—"} / {header.invoice_series ?? "—"}
           </div>
         </div>
-      )}
 
-      <div className="rounded-xl border p-4 space-y-3">
-        <div className="text-sm font-medium">Fornecedor</div>
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Emissão</div>
+          <div className="font-medium">{header.issue_date ?? "—"}</div>
+        </div>
+      </section>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <select
-            className="h-10 rounded-md border px-3 min-w-[320px]"
-            value={header.supplier_id ?? ""}
-            onChange={(e) => {
-              const value = Number(e.target.value);
-              if (value) void onMatchSupplier(value);
-            }}
-            disabled={busy || !!isLocked}
-          >
-            <option value="">Selecione o fornecedor</option>
-            {st.suppliers.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name}
-              </option>
-            ))}
-          </select>
+      <section className="grid gap-4 md:grid-cols-4">
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Fornecedor vinculado</div>
+          <div className="font-medium">{header.supplier_id ?? "Pendente"}</div>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Produtos</div>
+          <div className="font-medium">{money(header.products_amount)}</div>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Frete</div>
+          <div className="font-medium">{money(header.freight_amount)}</div>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Total</div>
+          <div className="font-medium">{money(header.total_amount)}</div>
+        </div>
+      </section>
+
+      <section className="rounded-lg border p-4 space-y-4">
+        <h2 className="text-lg font-semibold">Classificação financeira</h2>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="space-y-2 text-sm">
+            <span>Plano de contas</span>
+            <select
+              className="w-full rounded border px-3 py-2"
+              value={header.chart_account_id ?? ""}
+              onChange={(e) => void onUpdateFinancial("chartAccountId", e.target.value)}
+              disabled={busy || !!isLocked}
+            >
+              <option value="">Selecione</option>
+              {financialOptions.chartAccounts.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.code ? `${x.code} - ` : ""}
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-2 text-sm">
+            <span>Centro de custo</span>
+            <select
+              className="w-full rounded border px-3 py-2"
+              value={header.cost_center_id ?? ""}
+              onChange={(e) => void onUpdateFinancial("costCenterId", e.target.value)}
+              disabled={busy || !!isLocked}
+            >
+              <option value="">Selecione</option>
+              {financialOptions.costCenters.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.code ? `${x.code} - ` : ""}
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="space-y-2 text-sm">
+            <span>Condição de pagamento</span>
+            <select
+              className="w-full rounded border px-3 py-2"
+              value={header.payment_term_id ?? ""}
+              onChange={(e) => void onUpdateFinancial("paymentTermId", e.target.value)}
+              disabled={busy || !!isLocked}
+            >
+              <option value="">Selecione</option>
+              {financialOptions.paymentTerms.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {installments.length > 0 && (
+          <div className="space-y-3">
+            <h3 className="font-medium">Parcelas importadas</h3>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="px-2 py-2">Parcela</th>
+                    <th className="px-2 py-2">Vencimento</th>
+                    <th className="px-2 py-2">Valor</th>
+                    <th className="px-2 py-2">Conta a pagar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {installments.map((inst) => (
+                    <tr key={inst.id} className="border-b">
+                      <td className="px-2 py-2">{inst.installment_number ?? inst.line_no}</td>
+                      <td className="px-2 py-2">
+                        {isLocked ? (
+                          inst.due_date
+                        ) : (
+                          <input
+                            className="rounded border px-2 py-1"
+                            type="date"
+                            defaultValue={inst.due_date}
+                            onBlur={(e) => {
+                              if (e.target.value && e.target.value !== inst.due_date) {
+                                void onUpdateInstallment(inst.id, { dueDate: e.target.value });
+                              }
+                            }}
+                          />
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {isLocked ? (
+                          money(inst.amount)
+                        ) : (
+                          <input
+                            className="rounded border px-2 py-1"
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            defaultValue={inst.amount}
+                            onBlur={(e) => {
+                              const value = Number(e.target.value);
+                              if (value > 0 && value !== Number(inst.amount)) {
+                                void onUpdateInstallment(inst.id, { amount: value });
+                              }
+                            }}
+                          />
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {inst.accounts_payable_id ? `#${inst.accounts_payable_id}` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border p-4 space-y-4">
+        <h2 className="text-lg font-semibold">Fornecedor</h2>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="space-y-2 text-sm">
+            <span>Vincular fornecedor</span>
+            <select
+              className="min-w-[320px] rounded border px-3 py-2"
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                if (value) void onMatchSupplier(value);
+              }}
+              disabled={busy || !!isLocked}
+              defaultValue=""
+            >
+              <option value="">Selecione o fornecedor</option>
+              {st.suppliers.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </select>
+          </label>
 
           {!isLocked && (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCreateSupplier}
-              disabled={busy}
-            >
+            <Button variant="outline" onClick={() => void onCreateSupplier()} disabled={busy}>
               Criar fornecedor do XML
             </Button>
           )}
 
           {header.status === "CONFIRMED" && (
-            <Button asChild variant="outline">
-              <Link to="/financeiro/contas-pagar">Ver contas a pagar</Link>
-            </Button>
+            <Link className="text-sm underline" to="/financeiro/contas-a-pagar">
+              Ver contas a pagar
+            </Link>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="overflow-hidden rounded-xl border">
+      <section className="rounded-lg border p-4 space-y-4">
+        <h2 className="text-lg font-semibold">Itens</h2>
+
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50">
-              <tr className="text-left">
-                <th className="px-4 py-3">Linha</th>
-                <th className="px-4 py-3">Descrição</th>
-                <th className="px-4 py-3">EAN</th>
-                <th className="px-4 py-3">NCM</th>
-                <th className="px-4 py-3">Qtd.</th>
-                <th className="px-4 py-3">Unit.</th>
-                <th className="px-4 py-3">Total</th>
-                <th className="px-4 py-3">Produto</th>
-                <th className="px-4 py-3">Match</th>
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="px-2 py-2">Linha</th>
+                <th className="px-2 py-2">Descrição</th>
+                <th className="px-2 py-2">EAN</th>
+                <th className="px-2 py-2">NCM</th>
+                <th className="px-2 py-2">Qtd.</th>
+                <th className="px-2 py-2">Unit.</th>
+                <th className="px-2 py-2">Total</th>
+                <th className="px-2 py-2">Produto</th>
+                <th className="px-2 py-2">Match</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className="border-t">
-                  <td className="px-4 py-3">{item.line_no}</td>
-                  <td className="px-4 py-3">{item.description}</td>
-                  <td className="px-4 py-3">{item.ean ?? "—"}</td>
-                  <td className="px-4 py-3">{item.ncm ?? "—"}</td>
-                  <td className="px-4 py-3">
+                <tr key={item.id} className="border-b align-top">
+                  <td className="px-2 py-2">{item.line_no}</td>
+                  <td className="px-2 py-2">{item.description}</td>
+                  <td className="px-2 py-2">{item.ean ?? "—"}</td>
+                  <td className="px-2 py-2">{item.ncm ?? "—"}</td>
+                  <td className="px-2 py-2">
                     {isLocked ? (
                       item.quantity
                     ) : (
                       <input
+                        className="w-24 rounded border px-2 py-1"
                         type="number"
                         step="0.0001"
-                        className="h-9 rounded-md border px-2 w-24"
-                        defaultValue={Number(item.quantity)}
+                        min="0.0001"
+                        defaultValue={item.quantity}
                         onBlur={(e) => {
                           const value = Number(e.target.value);
                           if (value > 0 && value !== Number(item.quantity)) {
@@ -404,15 +474,16 @@ export default function PurchaseEntryImportPage() {
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-2">
                     {isLocked ? (
                       money(item.unit_price)
                     ) : (
                       <input
+                        className="w-28 rounded border px-2 py-1"
                         type="number"
                         step="0.000001"
-                        className="h-9 rounded-md border px-2 w-28"
-                        defaultValue={Number(item.unit_price)}
+                        min="0"
+                        defaultValue={item.unit_price}
                         onBlur={(e) => {
                           const value = Number(e.target.value);
                           if (value >= 0 && value !== Number(item.unit_price)) {
@@ -422,40 +493,40 @@ export default function PurchaseEntryImportPage() {
                       />
                     )}
                   </td>
-                  <td className="px-4 py-3">{money(item.total_price)}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <select
-                        className="h-9 rounded-md border px-2 min-w-[260px]"
-                        value={item.product_id ?? ""}
-                        onChange={(e) => {
-                          const value = Number(e.target.value);
-                          if (value) void onMatchProduct(item.id, value);
-                        }}
-                        disabled={busy || !!isLocked}
-                      >
-                        <option value="">Selecione</option>
-                        {st.products.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} {p.sku ? `(${p.sku})` : ""}
-                          </option>
-                        ))}
-                      </select>
+                  <td className="px-2 py-2">{money(item.total_price)}</td>
+                  <td className="px-2 py-2">
+                    <select
+                      className="min-w-[220px] rounded border px-2 py-1"
+                      onChange={(e) => {
+                        const value = Number(e.target.value);
+                        if (value) void onMatchProduct(item.id, value);
+                      }}
+                      disabled={busy || !!isLocked}
+                      defaultValue=""
+                    >
+                      <option value="">Selecione</option>
+                      {st.products.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} {p.sku ? `(${p.sku})` : ""}
+                        </option>
+                      ))}
+                    </select>
 
-                      {!isLocked && (
+                    {!isLocked && (
+                      <div className="mt-2">
                         <Button
-                          type="button"
                           variant="outline"
+                          size="sm"
                           onClick={() => void onCreateProduct(item.id)}
                           disabled={busy}
                         >
                           Criar produto
                         </Button>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${badgeClass(item.match_status)}`}>
+                  <td className="px-2 py-2">
+                    <span className={`rounded px-2 py-1 text-xs ${badgeClass(item.match_status)}`}>
                       {item.match_status}
                     </span>
                   </td>
@@ -464,32 +535,25 @@ export default function PurchaseEntryImportPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap gap-3">
         {!isLocked && (
           <>
-            <Button
-              onClick={onConfirm}
-              disabled={busy || !canConfirm}
-            >
+            <Button onClick={() => void onConfirm()} disabled={busy || !canConfirm}>
               Confirmar entrada
             </Button>
 
-            <Button
-              variant="outline"
-              onClick={onCancel}
-              disabled={busy}
-            >
+            <Button variant="destructive" onClick={() => void onCancel()} disabled={busy}>
               Cancelar importação
             </Button>
           </>
         )}
 
         {header.status === "CONFIRMED" && (
-          <Button asChild variant="outline">
-            <Link to="/inventory/movements">Ver movimentações de estoque</Link>
-          </Button>
+          <Link className="text-sm underline" to="/estoque/movimentacoes">
+            Ver movimentações de estoque
+          </Link>
         )}
       </div>
     </div>

@@ -49,6 +49,14 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
       );
 
       app.put(
+        "/:id/logistics",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+        },
+        controller.updateImportLogistics,
+      );
+
+      app.put(
         "/:id/match-supplier",
         {
           preHandler: [requireAuth, requirePermission("purchase_entries.update")],
