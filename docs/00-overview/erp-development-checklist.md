@@ -461,9 +461,9 @@ Muito comum em ERPs maduros.
   * [x] revisão de vínculos
   * [x] criação assistida de fornecedor
   * [x] criação assistida de produto
-  * [x] confirmação
-  * [x] integração estoque
-  * [x] integração contas a pagar
+  * [ ] confirmação
+  * [ ] integração estoque
+  * [ ] integração contas a pagar
 * [ ] solicitações de compra
 * [ ] cotações
 * [ ] pedidos de compra
@@ -472,31 +472,33 @@ Muito comum em ERPs maduros.
 
 ## Purchase Entry / XML de Entrada
 
-- [x] Upload e parsing de XML NF-e
-- [x] Persistência em staging (`purchase_entry_imports`)
-- [x] Persistência de itens (`purchase_entry_import_items`)
-- [x] Persistência de parcelas (`purchase_entry_import_installments`)
-- [x] Detecção de duplicidade por chave de acesso
-- [x] Validação de pertencimento do XML à empresa atual
-- [x] Match automático de fornecedor por documento
-- [x] Match automático de produto por EAN/nome exato
-- [x] Criação assistida de fornecedor
-- [x] Criação assistida de produto com `ncm_id`
-- [x] Edição de itens antes da confirmação
-- [x] Edição de parcelas antes da confirmação
-- [x] Classificação financeira no staging
-- [x] Confirmação operacional da entrada
-- [x] Geração de movimentações de estoque
-- [x] Geração parcelada de contas a pagar
-- [x] Tratamento semântico de conflitos (`409`) para XML duplicado
-- [ ] Importação e vínculo de transportadora
-- [ ] Rateio avançado de frete/despesas por item
-- [ ] Política de custo médio / último custo
-- [ ] Política de markup / margem / preço sugerido
-- [ ] Entidade definitiva `purchase_entries`
-- [ ] Integração com pedido de compra
-- [ ] Three-way matching (pedido, nota, recebimento)
+* [x] Upload e parsing de XML NF-e
+* [x] Persistência em staging (`purchase_entry_imports`)
+* [x] Persistência de itens (`purchase_entry_import_items`)
+* [x] Persistência de parcelas (`purchase_entry_import_installments`)
+* [x] Detecção de duplicidade por chave de acesso
+* [x] Validação de pertencimento do XML à empresa atual
+* [x] Match automático de fornecedor por documento
+* [x] Match automático de produto por EAN/nome exato
+* [x] Criação assistida de fornecedor
+* [x] Criação assistida de produto com `ncm_id`
+* [x] Edição de itens antes da confirmação
+* [x] Edição de parcelas antes da confirmação
+* [x] Classificação financeira no staging
+* [ ] Confirmação operacional da entrada
+* [ ] Geração de movimentações de estoque
+* [ ] Geração parcelada de contas a pagar
+* [x] Tratamento semântico de conflitos (`409`) para XML duplicado
+* [ ] Importação e vínculo de transportadora
+* [ ] Rateio avançado de frete/despesas por item
+* [ ] Política de custo médio / último custo
+* [ ] Política de markup / margem / preço sugerido
+* [ ] Entidade definitiva `purchase_entries`
+* [ ] Integração com pedido de compra
+* [ ] Three-way matching (pedido, nota, recebimento)
+
 ---
+
 
 # 7. RELATÓRIOS / BI
 

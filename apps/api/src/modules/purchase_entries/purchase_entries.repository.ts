@@ -13,6 +13,19 @@ import type {
   UpdateImportLogisticsInput,
 } from "./purchase_entries.schema";
 
+export type SupplierMini = {
+  id: number;
+  name: string;
+  document?: string | null;
+};
+
+export type ProductMini = {
+  id: number;
+  name: string;
+  sku?: string | null;
+  ean?: string | null;
+};
+
 export type PurchaseEntryImportRow = {
   id: number;
   company_id: number;
@@ -296,14 +309,15 @@ export async function getCompanyDocument(companyId: number): Promise<string | nu
   const result = await pool
     .request()
     .input("company_id", companyId)
-    .query<{ document: string | null }>(`
+    .query<{ cnpj: string | null }>(`
       SELECT TOP 1
-        document
+        cnpj
       FROM dbo.companies
       WHERE id = @company_id
+        AND deleted_at IS NULL
     `);
 
-  return result.recordset[0]?.document ?? null;
+  return result.recordset[0]?.cnpj ?? null;
 }
 
 export async function findSupplierByDocument(companyId: number, document: string | null) {
@@ -335,16 +349,19 @@ export async function findProductMatch(
 ) {
   const pool = await getPool();
 
-  if (input.ean?.trim()) {
+  const normalizedEan = onlyDigits(input.ean);
+  const normalizedDescription = input.description.trim();
+
+  if (normalizedEan) {
     const byEan = await pool
       .request()
       .input("company_id", companyId)
-      .input("ean", input.ean.trim())
+      .input("ean", normalizedEan)
       .query<{ id: number }>(`
         SELECT TOP 1 id
         FROM dbo.products
         WHERE company_id = @company_id
-          AND ean = @ean
+          AND REPLACE(REPLACE(REPLACE(ISNULL(ean, ''), '.', ''), '/', ''), '-', '') = @ean
         ORDER BY id
       `);
 
@@ -357,24 +374,26 @@ export async function findProductMatch(
     }
   }
 
-  const byName = await pool
-    .request()
-    .input("company_id", companyId)
-    .input("name", input.description.trim())
-    .query<{ id: number }>(`
-      SELECT TOP 1 id
-      FROM dbo.products
-      WHERE company_id = @company_id
-        AND name = @name
-      ORDER BY id
-    `);
+  if (normalizedDescription) {
+    const byName = await pool
+      .request()
+      .input("company_id", companyId)
+      .input("name", normalizedDescription.toUpperCase())
+      .query<{ id: number }>(`
+        SELECT TOP 1 id
+        FROM dbo.products
+        WHERE company_id = @company_id
+          AND UPPER(LTRIM(RTRIM(name))) = @name
+        ORDER BY id
+      `);
 
-  if (byName.recordset[0]?.id) {
-    return {
-      productId: byName.recordset[0].id,
-      matchStatus: "MATCHED" as const,
-      matchNotes: "Match automático por nome exato",
-    };
+    if (byName.recordset[0]?.id) {
+      return {
+        productId: byName.recordset[0].id,
+        matchStatus: "MATCHED" as const,
+        matchNotes: "Match automático por nome exato",
+      };
+    }
   }
 
   return {
@@ -2478,4 +2497,46 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
 
     throw new Error(originalMessage);
   }
+}
+
+export async function listSuppliersMini(companyId: number): Promise<SupplierMini[]> {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .query<SupplierMini>(`
+      SELECT TOP 300
+        id,
+        name,
+        document
+      FROM dbo.suppliers
+      WHERE company_id = @company_id
+        AND deleted_at IS NULL
+        AND is_active = 1
+      ORDER BY name
+    `);
+
+  return result.recordset;
+}
+
+export async function listProductsMini(companyId: number): Promise<ProductMini[]> {
+  const pool = await getPool();
+
+  const result = await pool
+    .request()
+    .input("company_id", companyId)
+    .query<ProductMini>(`
+      SELECT TOP 1000
+        id,
+        name,
+        sku,
+        ean
+      FROM dbo.products
+      WHERE company_id = @company_id
+        AND active = 1
+      ORDER BY name
+    `);
+
+  return result.recordset;
 }

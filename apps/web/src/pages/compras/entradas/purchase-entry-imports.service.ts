@@ -1,122 +1,119 @@
+import { api } from "@/shared/api/client";
 import type {
-  FinancialOptions,
-  ProductMini,
+  ConfirmImportResponse,
   PurchaseEntryImportDetails,
   PurchaseEntryImportRow,
-  PurchaseEntryImportStatus,
+  UpdateImportFinancialPayload,
+  UpdateImportInstallmentPayload,
+  UpdateImportItemPayload,
+  UpdateImportLogisticsPayload,
+  FinancialOptions,
+  ProductMini,
   SupplierMini,
 } from "./purchase-entry-imports.types";
-import type { PurchaseEntryImportUploadValues } from "./purchase-entry-imports.schema";
 
-function getToken() {
-  return localStorage.getItem("token") || localStorage.getItem("access_token") || "";
-}
+const BASE = "/purchase-entry-imports";
 
-async function api<T>(url: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-
-  const headers: Record<string, string> = {
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...((init?.headers as Record<string, string> | undefined) ?? {}),
-  };
-
-  if (init?.body !== undefined && init?.body !== null) {
-    headers["Content-Type"] = "application/json";
-  }
-
-  const res = await fetch(url, {
-    ...init,
-    headers,
-  });
-
-  const text = await res.text();
-  const contentType = res.headers.get("content-type") ?? "";
-
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status} em ${url}: ${text.slice(0, 300)}`);
-  }
-
-  if (!contentType.includes("application/json")) {
-    throw new Error(
-      `Esperava JSON, veio "${contentType}" em ${url}. Início: ${text.slice(0, 120)}`,
-    );
-  }
-
-  return JSON.parse(text) as T;
-}
-
-const base = "/api/purchase-entry-imports";
-
-export function listPurchaseEntryImports(params?: {
-  status?: PurchaseEntryImportStatus;
+export async function listPurchaseEntryImports(params?: {
+  status?: string;
   q?: string;
   supplierId?: number;
   limit?: number;
   offset?: number;
-}) {
-  const usp = new URLSearchParams();
+}): Promise<PurchaseEntryImportRow[]> {
+  const search = new URLSearchParams();
 
-  if (params?.status) usp.set("status", params.status);
-  if (params?.q?.trim()) usp.set("q", params.q.trim());
-  if (params?.supplierId) usp.set("supplierId", String(params.supplierId));
+  if (params?.status) search.set("status", params.status);
+  if (params?.q) search.set("q", params.q);
+  if (params?.supplierId) search.set("supplierId", String(params.supplierId));
+  if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.offset) search.set("offset", String(params.offset));
 
-  usp.set("limit", String(params?.limit ?? 100));
-  usp.set("offset", String(params?.offset ?? 0));
+  const url = search.toString() ? `${BASE}?${search.toString()}` : BASE;
 
-  return api<PurchaseEntryImportRow[]>(`${base}?${usp.toString()}`);
-}
-
-export function getPurchaseEntryImportById(id: number) {
-  return api<PurchaseEntryImportDetails>(`${base}/${id}`);
-}
-
-export function getPurchaseEntryFinancialOptions() {
-  return api<FinancialOptions>(`${base}/financial-options`);
-}
-
-export function importPurchaseEntryXml(payload: PurchaseEntryImportUploadValues) {
-  return api<{ id: number; status: string }>(`${base}/import-xml`, {
-    method: "POST",
-    body: JSON.stringify(payload),
+  return api(url, {
+    method: "GET",
   });
 }
 
-export function updatePurchaseEntryFinancial(
+export async function getPurchaseEntryImport(
   id: number,
-  payload: {
-    chartAccountId?: number | null;
-    costCenterId?: number | null;
-    paymentTermId?: number | null;
-  },
-) {
-  return api<{ ok: true }>(`${base}/${id}/financial`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
+): Promise<PurchaseEntryImportDetails> {
+  return api(`${BASE}/${id}`, {
+    method: "GET",
   });
 }
 
-export function matchPurchaseEntrySupplier(id: number, supplierId: number) {
-  return api<{ ok: true }>(`${base}/${id}/match-supplier`, {
-    method: "PUT",
-    body: JSON.stringify({ supplierId }),
-  });
-}
-
-export function createSupplierFromImport(id: number, payload?: { overwriteName?: string }) {
-  return api<{ supplierId: number }>(`${base}/${id}/create-supplier`, {
+export async function importPurchaseEntryXml(payload: {
+  fileName: string;
+  xmlContent: string;
+}): Promise<PurchaseEntryImportDetails | { id: number }> {
+  return api<PurchaseEntryImportDetails | { id: number }>(`${BASE}/import-xml`, {
     method: "POST",
-    body: JSON.stringify(payload ?? {}),
+    body: payload,
   });
 }
 
-export function matchPurchaseEntryProduct(id: number, itemId: number, productId: number) {
-  return api<{ ok: true }>(`${base}/${id}/items/${itemId}/match-product`, {
+export async function updatePurchaseEntryFinancial(
+  id: number,
+  payload: UpdateImportFinancialPayload,
+) {
+  return api(`${BASE}/${id}/financial`, {
     method: "PUT",
-    body: JSON.stringify({ productId }),
+    body: payload,
   });
 }
 
-export function createProductFromImportItem(
+export async function updatePurchaseEntryLogistics(
+  id: number,
+  payload: UpdateImportLogisticsPayload,
+) {
+  return api(`${BASE}/${id}/logistics`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export async function matchSupplier(id: number, supplierId: number) {
+  return api(`${BASE}/${id}/match-supplier`, {
+    method: "PUT",
+    body: { supplierId },
+  });
+}
+
+export async function createSupplierFromImport(
+  id: number,
+  payload?: { overwriteName?: string },
+) {
+  return api(`${BASE}/${id}/create-supplier`, {
+    method: "POST",
+    body: payload ?? {},
+  });
+}
+
+export async function updateImportItem(
+  id: number,
+  itemId: number,
+  payload: UpdateImportItemPayload,
+) {
+  return api(`${BASE}/${id}/items/${itemId}`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export async function matchProduct(
+  id: number,
+  itemId: number,
+  productId: number,
+) {
+  return api(`${BASE}/${id}/items/${itemId}/match-product`, {
+    method: "PUT",
+    body: { productId },
+  });
+}
+
+export async function createProductFromImportItem(
   id: number,
   itemId: number,
   payload?: {
@@ -125,78 +122,51 @@ export function createProductFromImportItem(
     trackInventory?: boolean;
   },
 ) {
-  return api<{ productId: number }>(`${base}/${id}/items/${itemId}/create-product`, {
+  return api(`${BASE}/${id}/items/${itemId}/create-product`, {
     method: "POST",
-    body: JSON.stringify(payload ?? { kind: "product", trackInventory: true }),
+    body: payload ?? {},
   });
 }
 
-export function updatePurchaseEntryItem(
-  id: number,
-  itemId: number,
-  payload: {
-    quantity?: number;
-    unitPrice?: number;
-    totalPrice?: number;
-  },
-) {
-  return api<{ ok: true }>(`${base}/${id}/items/${itemId}`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function updatePurchaseEntryInstallment(
+export async function updateImportInstallment(
   id: number,
   installmentId: number,
-  payload: {
-    dueDate?: string;
-    amount?: number;
-  },
+  payload: UpdateImportInstallmentPayload,
 ) {
-  return api<{ ok: true }>(`${base}/${id}/installments/${installmentId}`, {
+  return api(`${BASE}/${id}/installments/${installmentId}`, {
     method: "PUT",
-    body: JSON.stringify(payload),
+    body: payload,
   });
 }
 
-export function confirmPurchaseEntryImport(id: number) {
-  return api<{ accountsPayableId: number | null }>(`${base}/${id}/confirm`, {
+export async function confirmPurchaseEntryImport(
+  id: number,
+): Promise<ConfirmImportResponse> {
+  return api(`${BASE}/${id}/confirm`, {
     method: "POST",
-    body: JSON.stringify({}),
   });
 }
 
-export function cancelPurchaseEntryImport(id: number) {
-  return api<{ ok: true }>(`${base}/${id}/cancel`, {
+export async function cancelPurchaseEntryImport(id: number) {
+  return api(`${BASE}/${id}/cancel`, {
     method: "PATCH",
-    body: JSON.stringify({}),
   });
 }
 
-export async function listSuppliersMini(): Promise<SupplierMini[]> {
-  const data = await api<any>("/api/suppliers");
-
-  const arr = Array.isArray(data) ? data : (data?.data ?? []);
-
-  return Array.isArray(arr)
-    ? arr.map((x: any) => ({
-        id: Number(x.id),
-        name: String(x.name ?? ""),
-      }))
-    : [];
+export async function getFinancialOptions(): Promise<FinancialOptions> {
+  return api<FinancialOptions>(`${BASE}/financial-options`, {
+    method: "GET",
+  });
 }
 
-export async function listProductsMini(): Promise<ProductMini[]> {
-  const data = await api<any>("/api/products");
+export async function listPurchaseEntrySuppliersMini(): Promise<SupplierMini[]> {
+  return api<SupplierMini[]>(`${BASE}/suppliers-mini`, {
+    method: "GET",
+  });
+}
 
-  const arr = Array.isArray(data) ? data : (data?.data ?? []);
-
-  return Array.isArray(arr)
-    ? arr.map((x: any) => ({
-        id: Number(x.id),
-        name: String(x.name ?? ""),
-        sku: x.sku ?? null,
-      }))
-    : [];
+export async function listPurchaseEntryProductsMini(): Promise<ProductMini[]> {
+  return api<ProductMini[]>(`${BASE}/products-mini`, {
+    method: "GET",
+  });
 }

@@ -263,3 +263,23 @@ export async function cancelImport(req: FastifyRequest, rep: FastifyReply) {
     return sendHandledError(rep, err, "Erro ao cancelar importação.");
   }
 }
+
+export async function listSuppliersMini(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const data = await service.listSuppliersMini(auth.companyId);
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao carregar fornecedores.");
+  }
+}
+
+export async function listProductsMini(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const data = await service.listProductsMini(auth.companyId);
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao carregar produtos.");
+  }
+}

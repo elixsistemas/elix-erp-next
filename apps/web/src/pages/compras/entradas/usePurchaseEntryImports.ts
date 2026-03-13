@@ -8,21 +8,26 @@ import type {
 type UsePurchaseEntryImportsResult = {
   rows: PurchaseEntryImportRow[];
   loading: boolean;
+  error: string | null;
   q: string;
   setQ: React.Dispatch<React.SetStateAction<string>>;
   status: "" | PurchaseEntryImportStatus;
-  setStatus: React.Dispatch<React.SetStateAction<"" | PurchaseEntryImportStatus>>;
+  setStatus: React.Dispatch<
+    React.SetStateAction<"" | PurchaseEntryImportStatus>
+  >;
   reload: () => Promise<void>;
 };
 
 export function usePurchaseEntryImports(): UsePurchaseEntryImportsResult {
   const [rows, setRows] = useState<PurchaseEntryImportRow[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<"" | PurchaseEntryImportStatus>("");
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
 
     try {
       const data = await listPurchaseEntryImports({
@@ -31,6 +36,9 @@ export function usePurchaseEntryImports(): UsePurchaseEntryImportsResult {
       });
 
       setRows(data);
+    } catch (err: any) {
+      setRows([]);
+      setError(err?.message ?? "Erro ao carregar importações.");
     } finally {
       setLoading(false);
     }
@@ -47,6 +55,7 @@ export function usePurchaseEntryImports(): UsePurchaseEntryImportsResult {
   return {
     rows,
     loading,
+    error,
     q,
     setQ,
     status,

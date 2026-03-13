@@ -7,28 +7,62 @@ export default function PurchaseEntryImportUploadPage() {
   const navigate = useNavigate();
 
   const [fileName, setFileName] = useState("");
+  const [fileSize, setFileSize] = useState<number | null>(null);
   const [xmlContent, setXmlContent] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  async function onFileChange(file?: File | null) {
-    if (!file) return;
+  async function loadFile(file: File) {
+    if (!file.name.toLowerCase().endsWith(".xml")) {
+      setError("Selecione um arquivo XML válido.");
+      return;
+    }
 
+    setError(null);
     setFileName(file.name);
+    setFileSize(file.size);
 
     const text = await file.text();
     setXmlContent(text);
   }
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function onFileChange(file?: File | null) {
+    if (!file) return;
+    await loadFile(file);
+  }
+
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!xmlContent.trim()) return;
+    if (!xmlContent.trim()) {
+      setError("Carregue um XML antes de importar.");
+      return;
+    }
 
     setLoading(true);
+    setError(null);
 
     try {
-      const data = await importPurchaseEntryXml({ fileName, xmlContent });
-      navigate(`/compras/entradas/${data.id}`);
+      const result = await importPurchaseEntryXml({
+        fileName,
+        xmlContent,
+      });
+
+      console.log("IMPORT RESULT", result);
+
+      const importId =
+        (result as any)?.header?.id ??
+        (result as any)?.id ??
+        null;
+
+      if (!importId || Number.isNaN(Number(importId))) {
+        throw new Error("A API não retornou um ID de importação válido.");
+      }
+
+      navigate(`/compras/entradas/${importId}`);
+    } catch (err: any) {
+      console.error("Erro ao importar XML:", err);
+      setError(err?.message ?? "Erro ao importar XML.");
     } finally {
       setLoading(false);
     }
@@ -37,49 +71,64 @@ export default function PurchaseEntryImportUploadPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Importar XML de entrada</h1>
+        <h1 className="text-2xl font-semibold">Importar XML de compra</h1>
         <p className="text-sm text-muted-foreground">
-          O XML será importado para staging e só afetará estoque e financeiro
-          após confirmação.
+          O XML será analisado e carregado para conferência antes de gerar a
+          entrada definitiva no estoque e financeiro.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-4 rounded-lg border p-4">
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Arquivo XML</label>
+      <form onSubmit={onSubmit} className="space-y-6">
+        <div
+          className="flex flex-col items-center justify-center rounded-lg border border-dashed p-10 text-center cursor-pointer hover:bg-muted/40"
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files?.[0];
+            if (file) void loadFile(file);
+          }}
+        >
+          <div className="text-sm text-muted-foreground">
+            Arraste o XML aqui ou selecione um arquivo
+          </div>
+
           <input
             type="file"
             accept=".xml,text/xml,application/xml"
-            className="block w-full rounded-md border px-3 py-2 text-sm"
+            className="mt-3"
             onChange={(e) => void onFileChange(e.target.files?.[0])}
             disabled={loading}
           />
         </div>
 
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Conteúdo XML</label>
-          <textarea
-            className="min-h-[320px] w-full rounded-md border px-3 py-2 text-sm font-mono"
-            value={xmlContent}
-            onChange={(e) => setXmlContent(e.target.value)}
-            placeholder="<nfeProc>...</nfeProc>"
-            disabled={loading}
-          />
-        </div>
+        {fileName && (
+          <div className="rounded-md border p-3 text-sm space-y-1">
+            <div>
+              <span className="font-medium">Arquivo:</span> {fileName}
+            </div>
 
-        <div className="rounded-md bg-muted/40 p-3 text-sm">
-          <div>
-            <span className="font-medium">Arquivo:</span>{" "}
-            {fileName || "Nenhum arquivo selecionado"}
-          </div>
-          <div>
-            <span className="font-medium">Conteúdo carregado:</span>{" "}
-            {xmlContent.trim() ? "Sim" : "Não"}
-          </div>
-        </div>
+            {fileSize && (
+              <div>
+                <span className="font-medium">Tamanho:</span>{" "}
+                {(fileSize / 1024).toFixed(1)} KB
+              </div>
+            )}
 
-        <div className="flex items-center gap-2">
-          <Button type="submit" disabled={loading || !xmlContent.trim()}>
+            <div>
+              <span className="font-medium">Conteúdo carregado:</span>{" "}
+              {xmlContent ? "Sim" : "Não"}
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <Button type="submit" disabled={loading || !xmlContent}>
             {loading ? "Importando..." : "Importar XML"}
           </Button>
 

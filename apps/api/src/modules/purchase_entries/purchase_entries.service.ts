@@ -13,6 +13,27 @@ import type {
   UpdateImportLogisticsInput,
 } from "./purchase_entries.schema";
 
+function mapFreightMode(value: string | null): string | null {
+  const v = String(value ?? "").trim();
+
+  switch (v) {
+    case "0":
+      return "CIF";
+    case "1":
+      return "FOB";
+    case "2":
+      return "THIRD_PARTY";
+    case "3":
+      return "OWN_SENDER";
+    case "4":
+      return "OWN_RECEIVER";
+    case "9":
+      return "NO_FREIGHT";
+    default:
+      return null;
+  }
+}
+
 function ensureArray<T>(value: T | T[] | undefined | null): T[] {
   if (!value) return [];
   return Array.isArray(value) ? value : [value];
@@ -226,6 +247,8 @@ export async function importXml(
   }> = [];
 
   let pendingCount = 0;
+  let matchedByEanCount = 0;
+  let matchedByNameCount = 0;
 
   for (let i = 0; i < det.length; i++) {
     const prod = det[i]?.prod ?? {};
@@ -242,6 +265,14 @@ export async function importXml(
 
     if (!match.productId) {
       pendingCount += 1;
+    }
+
+    if (match.productId && match.matchNotes === "Match automático por EAN") {
+      matchedByEanCount += 1;
+    }
+
+    if (match.productId && match.matchNotes === "Match automático por nome exato") {
+      matchedByNameCount += 1;
     }
 
     items.push({
@@ -340,7 +371,7 @@ export async function importXml(
 
     carrierId: null,
     carrierVehicleId: null,
-    freightMode: getText(transp?.modFrete),
+    freightMode: mapFreightMode(getText(transp?.modFrete)),
     carrierNameXml: getText(transporta?.xNome),
     carrierDocumentXml:
       onlyDigits(getText(transporta?.CNPJ) || getText(transporta?.CPF)) || null,
@@ -356,11 +387,23 @@ export async function importXml(
 
     fileName: input.fileName,
     xmlContent: input.xmlContent,
-    matchSummary: hasPendingHeader
-      ? "Fornecedor pendente e/ou itens pendentes"
-      : pendingCount > 0
-        ? "Itens pendentes de vínculo"
-        : "Pronto para confirmar",
+    matchSummary:
+      pendingCount > 0 || !supplierId
+        ? [
+            !supplierId ? "Fornecedor pendente" : null,
+            pendingCount > 0 ? `${pendingCount} item(ns) pendente(s)` : null,
+            matchedByEanCount > 0 ? `${matchedByEanCount} por EAN` : null,
+            matchedByNameCount > 0 ? `${matchedByNameCount} por nome` : null,
+          ]
+            .filter(Boolean)
+            .join(" | ")
+        : [
+            "Pronto para confirmar",
+            matchedByEanCount > 0 ? `${matchedByEanCount} por EAN` : null,
+            matchedByNameCount > 0 ? `${matchedByNameCount} por nome` : null,
+          ]
+            .filter(Boolean)
+            .join(" | "),
     status,
     items,
     installments,
@@ -495,4 +538,12 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
 export async function cancelImport(companyId: number, id: number) {
   await repo.cancelImport(companyId, id);
   return { ok: true };
+}
+
+export async function listSuppliersMini(companyId: number) {
+  return repo.listSuppliersMini(companyId);
+}
+
+export async function listProductsMini(companyId: number) {
+  return repo.listProductsMini(companyId);
 }

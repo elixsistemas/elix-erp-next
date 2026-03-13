@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  getPurchaseEntryImportById,
-  listProductsMini,
-  listSuppliersMini,
+  getPurchaseEntryImport,
+  listPurchaseEntryProductsMini,
+  listPurchaseEntrySuppliersMini,
 } from "./purchase-entry-imports.service";
 import type {
   ProductMini,
@@ -10,54 +10,74 @@ import type {
   SupplierMini,
 } from "./purchase-entry-imports.types";
 
-type UsePurchaseEntryImportResult = {
-  data: PurchaseEntryImportDetails | null;
-  suppliers: SupplierMini[];
-  products: ProductMini[];
+type State = {
   loading: boolean;
-  reload: () => Promise<void>;
+  error: string | null;
+  data: PurchaseEntryImportDetails | null;
 };
 
-export function usePurchaseEntryImport(id?: number): UsePurchaseEntryImportResult {
-  const [data, setData] = useState<PurchaseEntryImportDetails | null>(null);
+export function usePurchaseEntryImport(id: number) {
+  const [state, setState] = useState<State>({
+    loading: true,
+    error: null,
+    data: null,
+  });
+
   const [suppliers, setSuppliers] = useState<SupplierMini[]>([]);
   const [products, setProducts] = useState<ProductMini[]>([]);
-  const [loading, setLoading] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!id || Number.isNaN(id)) {
-      setData(null);
-      setSuppliers([]);
-      setProducts([]);
-      return;
-    }
+  const loadImport = useCallback(async () => {
+    if (!id) return;
 
-    setLoading(true);
+    setState((s) => ({ ...s, loading: true, error: null }));
 
     try {
-      const [details, supplierList, productList] = await Promise.all([
-        getPurchaseEntryImportById(id),
-        listSuppliersMini(),
-        listProductsMini(),
-      ]);
+      const data = await getPurchaseEntryImport(id);
 
-      setData(details);
-      setSuppliers(supplierList);
-      setProducts(productList);
-    } finally {
-      setLoading(false);
+      setState({
+        loading: false,
+        error: null,
+        data,
+      });
+    } catch (err: any) {
+      setState({
+        loading: false,
+        error: err?.message ?? "Erro ao carregar importação",
+        data: null,
+      });
     }
   }, [id]);
 
+  const loadSuppliers = useCallback(async () => {
+    try {
+      const result = await listPurchaseEntrySuppliersMini();
+      setSuppliers(result ?? []);
+    } catch {
+      setSuppliers([]);
+    }
+  }, []);
+
+  const loadProducts = useCallback(async () => {
+    try {
+      const result = await listPurchaseEntryProductsMini();
+      setProducts(result ?? []);
+    } catch {
+      setProducts([]);
+    }
+  }, []);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    void Promise.all([loadImport(), loadSuppliers(), loadProducts()]);
+  }, [loadImport, loadSuppliers, loadProducts]);
+
+  const reload = useCallback(async () => {
+    await Promise.all([loadImport(), loadSuppliers(), loadProducts()]);
+  }, [loadImport, loadSuppliers, loadProducts]);
 
   return {
-    data,
+    ...state,
     suppliers,
     products,
-    loading,
-    reload: load,
+    reload,
   };
 }

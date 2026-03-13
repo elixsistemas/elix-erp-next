@@ -119,6 +119,23 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
         },
         controller.cancelImport,
       );
+
+      app.get(
+        "/suppliers-mini",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+        },
+        controller.listSuppliersMini,
+      );
+
+      app.get(
+        "/products-mini",
+        {
+          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+        },
+        controller.listProductsMini,
+      );
+
     },
     { prefix: "/purchase-entry-imports" },
   );

@@ -12,6 +12,12 @@ export type PurchaseEntryItemMatchStatus =
   | "REVIEW"
   | "NEW_PRODUCT";
 
+export type AllocationMethod = "VALUE" | "QUANTITY" | "WEIGHT" | "MANUAL";
+
+export type CostPolicy = "LAST_COST" | "AVERAGE_COST" | "LANDED_LAST_COST";
+
+export type PricePolicy = "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
+
 export type PurchaseEntryImportRow = {
   id: number;
   company_id: number;
@@ -40,18 +46,37 @@ export type PurchaseEntryImportRow = {
   total_amount: number;
   products_amount: number;
   freight_amount: number;
+  insurance_amount: number;
+  other_expenses_amount: number;
   discount_amount: number;
 
+  carrier_id: number | null;
+  carrier_vehicle_id: number | null;
+  freight_mode: string | null;
+  carrier_name_xml: string | null;
+  carrier_document_xml: string | null;
+  carrier_ie_xml: string | null;
+
+  allocation_method: AllocationMethod;
+  cost_policy: CostPolicy;
+  price_policy: PricePolicy;
+  markup_percent: number | null;
+  margin_percent: number | null;
+
+  purchase_order_id: number | null;
+  definitive_purchase_entry_id: number | null;
+
   source_file_name: string | null;
+
   status: PurchaseEntryImportStatus;
   match_summary: string | null;
   error_message: string | null;
 
   accounts_payable_id: number | null;
   fiscal_document_id: number | null;
-
   confirmed_at: string | null;
   confirmed_by_user_id: number | null;
+
   created_at: string;
   updated_at: string | null;
 };
@@ -76,6 +101,15 @@ export type PurchaseEntryImportItemRow = {
   product_id: number | null;
   match_status: PurchaseEntryItemMatchStatus;
   match_notes: string | null;
+
+  gross_unit_cost: number;
+  freight_allocated: number;
+  insurance_allocated: number;
+  other_expenses_allocated: number;
+  discount_allocated: number;
+  landed_total_cost: number;
+  landed_unit_cost: number;
+  weight_kg: number | null;
 
   created_at: string;
   updated_at: string | null;
@@ -121,4 +155,32 @@ export type FinancialOptions = {
   chartAccounts: MiniOption[];
   costCenters: MiniOption[];
   paymentTerms: MiniOption[];
+};
+
+export type UpdateImportFinancialPayload = {
+  chartAccountId?: number | null;
+  costCenterId?: number | null;
+  paymentTermId?: number | null;
+};
+
+export type UpdateImportLogisticsPayload = {
+  carrierId?: number | null;
+  carrierVehicleId?: number | null;
+  freightMode?: string | null;
+};
+
+export type UpdateImportItemPayload = {
+  quantity?: number;
+  unitPrice?: number;
+  totalPrice?: number;
+};
+
+export type UpdateImportInstallmentPayload = {
+  dueDate?: string;
+  amount?: number;
+};
+
+export type ConfirmImportResponse = {
+  accountsPayableId: number | null;
+  purchaseEntryId: number;
 };

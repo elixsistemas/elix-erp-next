@@ -6,12 +6,13 @@ import {
   confirmPurchaseEntryImport,
   createProductFromImportItem,
   createSupplierFromImport,
-  getPurchaseEntryFinancialOptions,
-  matchPurchaseEntryProduct,
-  matchPurchaseEntrySupplier,
+  getFinancialOptions,
+  matchProduct,
+  matchSupplier,
+  updateImportInstallment,
+  updateImportItem,
   updatePurchaseEntryFinancial,
-  updatePurchaseEntryInstallment,
-  updatePurchaseEntryItem,
+  updatePurchaseEntryLogistics,
 } from "./purchase-entry-imports.service";
 import { usePurchaseEntryImport } from "./usePurchaseEntryImport";
 import type { FinancialOptions } from "./purchase-entry-imports.types";
@@ -57,7 +58,7 @@ export default function PurchaseEntryImportPage() {
   });
 
   useEffect(() => {
-    void getPurchaseEntryFinancialOptions().then(setFinancialOptions);
+    void getFinancialOptions().then(setFinancialOptions);
   }, []);
 
   const data = st.data;
@@ -109,10 +110,43 @@ export default function PurchaseEntryImportPage() {
     }
   }
 
+  async function onUpdateLogistics(
+    field: "carrierId" | "carrierVehicleId" | "freightMode",
+    value: string,
+  ) {
+    if (!data) return;
+
+    setBusy(true);
+    try {
+      await updatePurchaseEntryLogistics(id, {
+        carrierId:
+          field === "carrierId"
+            ? value
+              ? Number(value)
+              : null
+            : data.header.carrier_id,
+        carrierVehicleId:
+          field === "carrierVehicleId"
+            ? value
+              ? Number(value)
+              : null
+            : data.header.carrier_vehicle_id,
+        freightMode:
+          field === "freightMode"
+            ? value || null
+            : data.header.freight_mode,
+      });
+
+      await reloadAll();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onMatchSupplier(supplierId: number) {
     setBusy(true);
     try {
-      await matchPurchaseEntrySupplier(id, supplierId);
+      await matchSupplier(id, supplierId);
       await reloadAll();
     } finally {
       setBusy(false);
@@ -132,7 +166,7 @@ export default function PurchaseEntryImportPage() {
   async function onMatchProduct(itemId: number, productId: number) {
     setBusy(true);
     try {
-      await matchPurchaseEntryProduct(id, itemId, productId);
+      await matchProduct(id, itemId, productId);
       await reloadAll();
     } finally {
       setBusy(false);
@@ -158,7 +192,7 @@ export default function PurchaseEntryImportPage() {
   ) {
     setBusy(true);
     try {
-      await updatePurchaseEntryItem(id, itemId, payload);
+      await updateImportItem(id, itemId, payload);
       await reloadAll();
     } finally {
       setBusy(false);
@@ -171,7 +205,7 @@ export default function PurchaseEntryImportPage() {
   ) {
     setBusy(true);
     try {
-      await updatePurchaseEntryInstallment(id, installmentId, payload);
+      await updateImportInstallment(id, installmentId, payload);
       await reloadAll();
     } finally {
       setBusy(false);
@@ -181,8 +215,12 @@ export default function PurchaseEntryImportPage() {
   async function onConfirm() {
     setBusy(true);
     try {
-      await confirmPurchaseEntryImport(id);
+      const result = await confirmPurchaseEntryImport(id);
       await reloadAll();
+
+      if (result?.purchaseEntryId) {
+        console.log("Entrada definitiva criada:", result.purchaseEntryId);
+      }
     } finally {
       setBusy(false);
     }
@@ -198,9 +236,25 @@ export default function PurchaseEntryImportPage() {
     }
   }
 
-  if (st.loading || !data) {
+    if (st.loading) {
     return <div>Carregando...</div>;
-  }
+    }
+
+    if (st.error) {
+    return (
+        <div className="rounded border border-red-300 bg-red-50 p-4 text-sm text-red-700">
+        {st.error}
+        </div>
+    );
+    }
+
+    if (!data) {
+    return (
+        <div className="rounded border p-4 text-sm text-muted-foreground">
+        Importação não encontrada ou ID inválido.
+        </div>
+    );
+    }
 
   const { header, items, installments } = data;
 
@@ -247,7 +301,7 @@ export default function PurchaseEntryImportPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-6">
         <div className="rounded-lg border p-4">
           <div className="text-sm text-muted-foreground">Fornecedor vinculado</div>
           <div className="font-medium">{header.supplier_id ?? "Pendente"}</div>
@@ -261,6 +315,16 @@ export default function PurchaseEntryImportPage() {
         <div className="rounded-lg border p-4">
           <div className="text-sm text-muted-foreground">Frete</div>
           <div className="font-medium">{money(header.freight_amount)}</div>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Seguro</div>
+          <div className="font-medium">{money(header.insurance_amount)}</div>
+        </div>
+
+        <div className="rounded-lg border p-4">
+          <div className="text-sm text-muted-foreground">Outras despesas</div>
+          <div className="font-medium">{money(header.other_expenses_amount)}</div>
         </div>
 
         <div className="rounded-lg border p-4">
@@ -326,71 +390,124 @@ export default function PurchaseEntryImportPage() {
             </select>
           </label>
         </div>
-
-        {installments.length > 0 && (
-          <div className="space-y-3">
-            <h3 className="font-medium">Parcelas importadas</h3>
-
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left">
-                    <th className="px-2 py-2">Parcela</th>
-                    <th className="px-2 py-2">Vencimento</th>
-                    <th className="px-2 py-2">Valor</th>
-                    <th className="px-2 py-2">Conta a pagar</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {installments.map((inst) => (
-                    <tr key={inst.id} className="border-b">
-                      <td className="px-2 py-2">{inst.installment_number ?? inst.line_no}</td>
-                      <td className="px-2 py-2">
-                        {isLocked ? (
-                          inst.due_date
-                        ) : (
-                          <input
-                            className="rounded border px-2 py-1"
-                            type="date"
-                            defaultValue={inst.due_date}
-                            onBlur={(e) => {
-                              if (e.target.value && e.target.value !== inst.due_date) {
-                                void onUpdateInstallment(inst.id, { dueDate: e.target.value });
-                              }
-                            }}
-                          />
-                        )}
-                      </td>
-                      <td className="px-2 py-2">
-                        {isLocked ? (
-                          money(inst.amount)
-                        ) : (
-                          <input
-                            className="rounded border px-2 py-1"
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            defaultValue={inst.amount}
-                            onBlur={(e) => {
-                              const value = Number(e.target.value);
-                              if (value > 0 && value !== Number(inst.amount)) {
-                                void onUpdateInstallment(inst.id, { amount: value });
-                              }
-                            }}
-                          />
-                        )}
-                      </td>
-                      <td className="px-2 py-2">
-                        {inst.accounts_payable_id ? `#${inst.accounts_payable_id}` : "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </section>
+
+      <section className="rounded-lg border p-4 space-y-4">
+        <h2 className="text-lg font-semibold">Logística</h2>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <label className="space-y-2 text-sm">
+            <span>Transportadora (ID)</span>
+            <input
+              className="w-full rounded border px-3 py-2"
+              defaultValue={header.carrier_id ?? ""}
+              disabled={busy || !!isLocked}
+              onBlur={(e) => void onUpdateLogistics("carrierId", e.target.value)}
+            />
+          </label>
+
+          <label className="space-y-2 text-sm">
+            <span>Veículo (ID)</span>
+            <input
+              className="w-full rounded border px-3 py-2"
+              defaultValue={header.carrier_vehicle_id ?? ""}
+              disabled={busy || !!isLocked}
+              onBlur={(e) => void onUpdateLogistics("carrierVehicleId", e.target.value)}
+            />
+          </label>
+
+          <label className="space-y-2 text-sm">
+            <span>Modalidade de frete</span>
+            <input
+              className="w-full rounded border px-3 py-2"
+              defaultValue={header.freight_mode ?? ""}
+              disabled={busy || !!isLocked}
+              onBlur={(e) => void onUpdateLogistics("freightMode", e.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="rounded border p-3 text-sm">
+            <div className="text-muted-foreground">Transportadora XML</div>
+            <div className="font-medium">{header.carrier_name_xml ?? "—"}</div>
+          </div>
+
+          <div className="rounded border p-3 text-sm">
+            <div className="text-muted-foreground">Documento XML</div>
+            <div className="font-medium">{header.carrier_document_xml ?? "—"}</div>
+          </div>
+
+          <div className="rounded border p-3 text-sm">
+            <div className="text-muted-foreground">IE XML</div>
+            <div className="font-medium">{header.carrier_ie_xml ?? "—"}</div>
+          </div>
+        </div>
+      </section>
+
+      {installments.length > 0 && (
+        <section className="rounded-lg border p-4 space-y-4">
+          <h2 className="text-lg font-semibold">Parcelas importadas</h2>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="px-2 py-2">Parcela</th>
+                  <th className="px-2 py-2">Vencimento</th>
+                  <th className="px-2 py-2">Valor</th>
+                  <th className="px-2 py-2">Conta a pagar</th>
+                </tr>
+              </thead>
+              <tbody>
+                {installments.map((inst) => (
+                  <tr key={inst.id} className="border-b">
+                    <td className="px-2 py-2">{inst.installment_number ?? inst.line_no}</td>
+                    <td className="px-2 py-2">
+                      {isLocked ? (
+                        inst.due_date
+                      ) : (
+                        <input
+                          className="rounded border px-2 py-1"
+                          type="date"
+                          defaultValue={inst.due_date}
+                          onBlur={(e) => {
+                            if (e.target.value && e.target.value !== inst.due_date) {
+                              void onUpdateInstallment(inst.id, { dueDate: e.target.value });
+                            }
+                          }}
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
+                      {isLocked ? (
+                        money(inst.amount)
+                      ) : (
+                        <input
+                          className="rounded border px-2 py-1"
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          defaultValue={inst.amount}
+                          onBlur={(e) => {
+                            const value = Number(e.target.value);
+                            if (value > 0 && value !== Number(inst.amount)) {
+                              void onUpdateInstallment(inst.id, { amount: value });
+                            }
+                          }}
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-2">
+                      {inst.accounts_payable_id ? `#${inst.accounts_payable_id}` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-lg border p-4 space-y-4">
         <h2 className="text-lg font-semibold">Fornecedor</h2>
@@ -398,15 +515,15 @@ export default function PurchaseEntryImportPage() {
         <div className="flex flex-wrap items-end gap-3">
           <label className="space-y-2 text-sm">
             <span>Vincular fornecedor</span>
-            <select
-              className="min-w-[320px] rounded border px-3 py-2"
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                if (value) void onMatchSupplier(value);
-              }}
-              disabled={busy || !!isLocked}
-              defaultValue=""
-            >
+                <select
+                className="min-w-[320px] rounded border px-3 py-2"
+                value={header.supplier_id ?? ""}
+                onChange={(e) => {
+                    const value = Number(e.target.value);
+                    if (value) void onMatchSupplier(value);
+                }}
+                disabled={busy || !!isLocked}
+                >
               <option value="">Selecione o fornecedor</option>
               {st.suppliers.map((x) => (
                 <option key={x.id} value={x.id}>
@@ -444,13 +561,23 @@ export default function PurchaseEntryImportPage() {
                 <th className="px-2 py-2">Qtd.</th>
                 <th className="px-2 py-2">Unit.</th>
                 <th className="px-2 py-2">Total</th>
+                <th className="px-2 py-2">Frete</th>
+                <th className="px-2 py-2">Seguro</th>
+                <th className="px-2 py-2">Outras</th>
+                <th className="px-2 py-2">Desc.</th>
+                <th className="px-2 py-2">Custo final</th>
                 <th className="px-2 py-2">Produto</th>
                 <th className="px-2 py-2">Match</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className="border-b align-top">
+                <tr
+                    key={item.id}
+                    className={`border-b align-top ${
+                        item.match_status === "REVIEW" ? "bg-amber-50/50" : ""
+                    }`}
+                    >
                   <td className="px-2 py-2">{item.line_no}</td>
                   <td className="px-2 py-2">{item.description}</td>
                   <td className="px-2 py-2">{item.ean ?? "—"}</td>
@@ -494,16 +621,21 @@ export default function PurchaseEntryImportPage() {
                     )}
                   </td>
                   <td className="px-2 py-2">{money(item.total_price)}</td>
+                  <td className="px-2 py-2">{money(item.freight_allocated)}</td>
+                  <td className="px-2 py-2">{money(item.insurance_allocated)}</td>
+                  <td className="px-2 py-2">{money(item.other_expenses_allocated)}</td>
+                  <td className="px-2 py-2">{money(item.discount_allocated)}</td>
+                  <td className="px-2 py-2">{money(item.landed_total_cost)}</td>
                   <td className="px-2 py-2">
                     <select
-                      className="min-w-[220px] rounded border px-2 py-1"
-                      onChange={(e) => {
-                        const value = Number(e.target.value);
-                        if (value) void onMatchProduct(item.id, value);
-                      }}
-                      disabled={busy || !!isLocked}
-                      defaultValue=""
-                    >
+                        className="min-w-[220px] rounded border px-2 py-1"
+                        value={item.product_id ?? ""}
+                        onChange={(e) => {
+                            const value = Number(e.target.value);
+                            if (value) void onMatchProduct(item.id, value);
+                        }}
+                        disabled={busy || !!isLocked}
+                        >
                       <option value="">Selecione</option>
                       {st.products.map((p) => (
                         <option key={p.id} value={p.id}>
@@ -525,11 +657,19 @@ export default function PurchaseEntryImportPage() {
                       </div>
                     )}
                   </td>
-                  <td className="px-2 py-2">
-                    <span className={`rounded px-2 py-1 text-xs ${badgeClass(item.match_status)}`}>
-                      {item.match_status}
-                    </span>
-                  </td>
+                    <td className="px-2 py-2">
+                    <div className="space-y-1">
+                        <span className={`rounded px-2 py-1 text-xs ${badgeClass(item.match_status)}`}>
+                        {item.match_status}
+                        </span>
+
+                        {item.match_notes && (
+                        <div className="text-xs text-muted-foreground">
+                            {item.match_notes}
+                        </div>
+                        )}
+                    </div>
+                    </td>
                 </tr>
               ))}
             </tbody>
@@ -551,9 +691,23 @@ export default function PurchaseEntryImportPage() {
         )}
 
         {header.status === "CONFIRMED" && (
-          <Link className="text-sm underline" to="/estoque/movimentacoes">
-            Ver movimentações de estoque
-          </Link>
+          <>
+            <Link className="text-sm underline" to="/estoque/movimentacoes">
+              Ver movimentações de estoque
+            </Link>
+
+            {header.accounts_payable_id && (
+              <Link className="text-sm underline" to="/financeiro/contas-a-pagar">
+                Ver contas a pagar
+              </Link>
+            )}
+
+            {header.definitive_purchase_entry_id && (
+              <span className="text-sm text-muted-foreground">
+                Entrada definitiva #{header.definitive_purchase_entry_id}
+              </span>
+            )}
+          </>
         )}
       </div>
     </div>

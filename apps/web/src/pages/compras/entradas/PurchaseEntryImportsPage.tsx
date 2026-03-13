@@ -2,6 +2,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { usePurchaseEntryImports } from "./usePurchaseEntryImports";
 
+function money(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value || 0));
+}
+
 function badgeClass(status: string) {
   switch (status) {
     case "READY":
@@ -19,124 +26,145 @@ function badgeClass(status: string) {
   }
 }
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(Number(value || 0));
-}
-
 export default function PurchaseEntryImportsPage() {
   const st = usePurchaseEntryImports();
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Entradas de compra</h1>
+          <h1 className="text-2xl font-semibold">Entradas de compras</h1>
           <p className="text-sm text-muted-foreground">
-            Importação de XML com staging e confirmação operacional.
+            Importações de XML de nota fiscal de compra
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link to="/compras/entradas/importar">
-            <Button>Importar XML</Button>
-          </Link>
-        </div>
+        <Link to="/compras/entradas/importar-xml">
+          <Button>Importar XML</Button>
+        </Link>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
-        <input
-          className="rounded-md border px-3 py-2 text-sm"
-          placeholder="Buscar por chave, fornecedor, número..."
-          value={st.q}
-          onChange={(e) => st.setQ(e.target.value)}
-        />
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="space-y-1 text-sm">
+          <span>Buscar</span>
+          <input
+            className="w-72 rounded border px-3 py-2"
+            placeholder="NF, fornecedor ou chave..."
+            value={st.q}
+            onChange={(e) => st.setQ(e.target.value)}
+          />
+        </label>
 
-        <select
-          className="rounded-md border px-3 py-2 text-sm"
-          value={st.status}
-          onChange={(e) => st.setStatus(e.target.value as any)}
-        >
-          <option value="">Todos os status</option>
-          <option value="MATCH_PENDING">Pendentes</option>
-          <option value="READY">Prontas</option>
-          <option value="CONFIRMED">Confirmadas</option>
-          <option value="ERROR">Erro</option>
-          <option value="CANCELED">Canceladas</option>
-        </select>
+        <label className="space-y-1 text-sm">
+          <span>Status</span>
+          <select
+            className="rounded border px-3 py-2"
+            value={st.status}
+            onChange={(e) => st.setStatus(e.target.value as any)}
+          >
+            <option value="">Todos</option>
+            <option value="IMPORTED">Importado</option>
+            <option value="MATCH_PENDING">Match pendente</option>
+            <option value="READY">Pronto</option>
+            <option value="CONFIRMED">Confirmado</option>
+            <option value="ERROR">Erro</option>
+            <option value="CANCELED">Cancelado</option>
+          </select>
+        </label>
 
-        <Button variant="outline" onClick={() => void st.reload()} disabled={st.loading}>
-          Recarregar
+        <Button variant="outline" onClick={() => void st.reload()}>
+          Atualizar
         </Button>
       </div>
 
-      <div className="rounded-lg border">
-        {st.loading ? (
-          <div className="p-6 text-sm text-muted-foreground">Carregando...</div>
-        ) : st.rows.length === 0 ? (
-          <div className="p-6 text-sm text-muted-foreground">
-            Nenhuma importação encontrada.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left">
-                  <th className="px-3 py-2 font-medium">Chave</th>
-                  <th className="px-3 py-2 font-medium">Fornecedor XML</th>
-                  <th className="px-3 py-2 font-medium">Número/Série</th>
-                  <th className="px-3 py-2 font-medium">Emissão</th>
-                  <th className="px-3 py-2 font-medium">Valor</th>
-                  <th className="px-3 py-2 font-medium">Status</th>
-                  <th className="px-3 py-2 font-medium">Ações</th>
-                </tr>
-              </thead>
+      {st.error && (
+        <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {st.error}
+        </div>
+      )}
 
-              <tbody>
-                {st.rows.map((row) => (
-                  <tr key={row.id} className="border-b last:border-b-0">
-                    <td className="px-3 py-2 font-mono text-xs">{row.access_key}</td>
+      <div className="overflow-x-auto rounded-lg border">
+        <table className="min-w-full text-sm">
+          <thead>
+            <tr className="border-b text-left">
+              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">Fornecedor</th>
+              <th className="px-3 py-2">Documento</th>
+              <th className="px-3 py-2">NF</th>
+              <th className="px-3 py-2">Emissão</th>
+              <th className="px-3 py-2">Total</th>
+              <th className="px-3 py-2">Entrada</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
 
-                    <td className="px-3 py-2">
-                      <div>{row.supplier_name ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {row.supplier_document ?? "—"}
-                      </div>
-                    </td>
+          <tbody>
+            {st.loading && (
+              <tr>
+                <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">
+                  Carregando...
+                </td>
+              </tr>
+            )}
 
-                    <td className="px-3 py-2">
-                      {row.invoice_number ?? "—"} / {row.invoice_series ?? "—"}
-                    </td>
+            {!st.loading && st.rows.length === 0 && (
+              <tr>
+                <td colSpan={8} className="px-3 py-4 text-center text-muted-foreground">
+                  Nenhuma importação encontrada.
+                </td>
+              </tr>
+            )}
 
-                    <td className="px-3 py-2">{row.issue_date ?? "—"}</td>
+            {st.rows.map((row) => (
+              <tr key={row.id} className="border-b">
+                <td className="px-3 py-2">
+                  <span
+                    className={`rounded px-2 py-1 text-xs font-medium ${badgeClass(
+                      row.status,
+                    )}`}
+                  >
+                    {row.status}
+                  </span>
+                </td>
 
-                    <td className="px-3 py-2">{money(row.total_amount)}</td>
+                <td className="px-3 py-2">
+                  <div className="font-medium">{row.supplier_name ?? "—"}</div>
+                </td>
 
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex rounded px-2 py-1 text-xs font-medium ${badgeClass(
-                          row.status,
-                        )}`}
-                      >
-                        {row.status}
-                      </span>
-                    </td>
+                <td className="px-3 py-2">{row.supplier_document ?? "—"}</td>
 
-                    <td className="px-3 py-2">
-                      <Link to={`/compras/entradas/${row.id}`}>
-                        <Button variant="outline" size="sm">
-                          Abrir
-                        </Button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                <td className="px-3 py-2">
+                  {row.invoice_number ?? "—"} / {row.invoice_series ?? "—"}
+                </td>
+
+                <td className="px-3 py-2">{row.issue_date ?? "—"}</td>
+
+                <td className="px-3 py-2">{money(row.total_amount)}</td>
+
+                <td className="px-3 py-2">
+                  {row.definitive_purchase_entry_id ? (
+                    <span className="text-emerald-700 font-medium">
+                      #{row.definitive_purchase_entry_id}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">
+                      —
+                    </span>
+                  )}
+                </td>
+
+                <td className="px-3 py-2 text-right">
+                  <Link
+                    to={`/compras/entradas/${row.id}`}
+                    className="text-sm underline"
+                  >
+                    Abrir
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
