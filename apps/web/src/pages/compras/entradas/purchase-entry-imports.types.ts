@@ -180,7 +180,149 @@ export type UpdateImportInstallmentPayload = {
   amount?: number;
 };
 
+export type ConfirmImportEconomicsRow = {
+  purchaseEntryItemId: number;
+  productId: number;
+  quantity: number;
+  landedUnitCost: number;
+  previousCost: number;
+  newCost: number;
+  previousPrice: number;
+  suggestedPrice: number;
+  appliedPrice: number;
+  priceChanged: boolean;
+  movedToStock: boolean;
+};
+
+export type PurchaseEntryStatus =
+  | "DRAFT"
+  | "CONFIRMED"
+  | "POSTED"
+  | "CANCELED";
+
+export type PurchaseEntryRow = {
+  id: number;
+  company_id: number;
+  source_import_id: number | null;
+  origin_type: "XML_IMPORT" | "MANUAL" | "PURCHASE_ORDER";
+  purchase_order_id: number | null;
+  supplier_id: number;
+  carrier_id: number | null;
+  carrier_vehicle_id: number | null;
+  access_key: string | null;
+  invoice_number: string | null;
+  invoice_series: string | null;
+  issue_date: string | null;
+  entry_date: string;
+  freight_mode: string | null;
+  products_amount: number;
+  freight_amount: number;
+  insurance_amount: number;
+  other_expenses_amount: number;
+  discount_amount: number;
+  total_amount: number;
+  payment_term_id: number | null;
+  chart_account_id: number | null;
+  cost_center_id: number | null;
+  allocation_method: AllocationMethod;
+  cost_policy: CostPolicy;
+  price_policy: PricePolicy;
+  markup_percent: number | null;
+  margin_percent: number | null;
+  accounts_payable_id: number | null;
+  fiscal_document_id: number | null;
+  status: PurchaseEntryStatus;
+  notes: string | null;
+  confirmed_at: string | null;
+  confirmed_by_user_id: number | null;
+  created_at: string;
+  updated_at: string | null;
+  supplier_name: string | null;
+  supplier_document: string | null;
+  carrier_name: string | null;
+};
+
+export type PurchaseEntryItemRow = {
+  id: number;
+  purchase_entry_id: number;
+  company_id: number;
+  source_import_item_id: number | null;
+  line_no: number;
+  product_id: number;
+  supplier_code: string | null;
+  ean: string | null;
+  description_snapshot: string;
+  ncm_snapshot: string | null;
+  cest_snapshot: string | null;
+  cfop_snapshot: string | null;
+  uom_snapshot: string | null;
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  freight_allocated: number;
+  insurance_allocated: number;
+  other_expenses_allocated: number;
+  discount_allocated: number;
+  landed_total_cost: number;
+  landed_unit_cost: number;
+  purchase_order_item_id: number | null;
+  created_at: string;
+  updated_at: string | null;
+  product_name: string | null;
+  sku: string | null;
+};
+
+export type PurchaseEntryDetails = {
+  header: PurchaseEntryRow;
+  items: PurchaseEntryItemRow[];
+};
+
 export type ConfirmImportResponse = {
   accountsPayableId: number | null;
   purchaseEntryId: number;
+  economics?: ConfirmImportEconomicsRow[];
+};
+
+export type UpdateImportEconomicsPayload = {
+  allocationMethod?: AllocationMethod;
+  costPolicy?: CostPolicy;
+  pricePolicy?: PricePolicy;
+  markupPercent?: number | null;
+  marginPercent?: number | null;
+};
+
+export type UpdateImportItemAllocationPayload = {
+  freightAllocated?: number;
+  insuranceAllocated?: number;
+  otherExpensesAllocated?: number;
+  discountAllocated?: number;
+};
+
+export type PurchaseEntryConfirmationPreviewRow = {
+  importItemId: number;
+  lineNo: number;
+  productId: number | null;
+  productName: string | null;
+  quantity: number;
+  unitPrice: number;
+  landedUnitCost: number;
+  landedTotalCost: number;
+  previousCost: number;
+  newCost: number;
+  previousPrice: number;
+  suggestedPrice: number | null;
+  appliedPrice: number;
+  movedToStock: boolean;
+};
+
+export type PurchaseEntryConfirmationPreview = {
+  header: {
+    productsAmount: number;
+    freightAmount: number;
+    insuranceAmount: number;
+    otherExpensesAmount: number;
+    discountAmount: number;
+    totalAmount: number;
+  };
+  items: PurchaseEntryConfirmationPreviewRow[];
 };

@@ -52,6 +52,9 @@ import AccountsPayablePage from "@/pages/financeiro/contas-pagar/AccountsPayable
 import AccountsPayableFormPage from "@/pages/financeiro/contas-pagar/AccountsPayableFormPage";
 import AccountsPayableDetailsPage from "@/pages/financeiro/contas-pagar/AccountsPayableDetailsPage";
 
+import PurchaseEntriesPage from "@/pages/compras/entradas/PurchaseEntriesPage";
+import PurchaseEntryPage from "@/pages/compras/entradas/PurchaseEntryPage";
+
 import RolesPage from "@/pages/admin/RolesPage";
 import UsersPage from "@/pages/admin/UsersPage";
 import CompanyModulesPage from "@/pages/admin/CompanyModulesPage";
@@ -66,8 +69,8 @@ function RootRedirect() {
 function AppBoot() {
   return (
     <BrowserRouter>
-    <Toaster position="top-right" richColors closeButton />
-    <GlobalUiResets />
+      <Toaster position="top-right" richColors closeButton />
+      <GlobalUiResets />
 
       <Routes>
         {/* Públicas */}
@@ -125,12 +128,12 @@ function AppBoot() {
                 }
               />
             </Route>
-              <Route element={<RequireModule module="cadastros.suppliers" />}>
-                <Route
-                  path="/cadastros/fornecedores"
-                  element={
-                    <RequireAccess perm="suppliers.read">
-                      <SuppliersPage />
+            <Route element={<RequireModule module="cadastros.suppliers" />}>
+              <Route
+                path="/cadastros/fornecedores"
+                element={
+                  <RequireAccess perm="suppliers.read">
+                    <SuppliersPage />
                   </RequireAccess>
                 }
               />
@@ -375,6 +378,24 @@ function AppBoot() {
                   </RequireAccess>
                 }
               />
+
+              <Route
+                path="/compras/entradas/entries"
+                element={
+                  <RequireAccess perm="purchase_entries.read">
+                    <PurchaseEntriesPage />
+                  </RequireAccess>
+                }
+              />
+
+              <Route
+                path="/compras/entradas/entry/:id"
+                element={
+                  <RequireAccess perm="purchase_entries.read">
+                    <PurchaseEntryPage />
+                  </RequireAccess>
+                }
+              />
             </Route>
 
             {/* Financeiro */}
@@ -434,7 +455,7 @@ function AppBoot() {
                   </RequireAccess>
                 }
               />
-            </Route>          
+            </Route>
 
             {/* Admin */}
             <Route element={<RequireModule module="admin.settings" />}>
@@ -447,7 +468,7 @@ function AppBoot() {
                 }
               />
             </Route>
-     
+
             <Route element={<RequireModule module="admin.roles" />}>
               <Route
                 path="/security/roles"

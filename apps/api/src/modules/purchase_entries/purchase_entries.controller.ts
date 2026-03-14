@@ -6,14 +6,17 @@ import {
   ImportXmlSchema,
   MatchProductSchema,
   MatchSupplierSchema,
-  PurchaseEntryIdParamsSchema,
   PurchaseEntryInstallmentParamsSchema,
   PurchaseEntryItemParamsSchema,
   PurchaseEntryListQuerySchema,
+  UpdateImportEconomicsSchema,
   UpdateImportFinancialSchema,
   UpdateImportInstallmentSchema,
   UpdateImportItemSchema,
   UpdateImportLogisticsSchema,
+  PurchaseEntryDefinitiveListQuerySchema,
+  PurchaseEntryIdParamsSchema,
+  UpdateImportItemAllocationSchema,
 } from "./purchase_entries.schema";
 
 function getAuthOrThrow(req: FastifyRequest) {
@@ -100,6 +103,19 @@ export async function importXml(req: FastifyRequest, rep: FastifyReply) {
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao importar XML.");
+  }
+}
+
+export async function updateImportEconomics(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const params = PurchaseEntryIdParamsSchema.parse(req.params);
+    const body = UpdateImportEconomicsSchema.parse(req.body);
+
+    const data = await service.updateImportEconomics(auth.companyId, params.id, body);
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao atualizar motor econômico da importação.");
   }
 }
 
@@ -281,5 +297,73 @@ export async function listProductsMini(req: FastifyRequest, rep: FastifyReply) {
     return rep.send(data);
   } catch (err: any) {
     return sendHandledError(rep, err, "Erro ao carregar produtos.");
+  }
+}
+
+export async function listDefinitiveEntries(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const query = PurchaseEntryDefinitiveListQuerySchema.parse(req.query);
+    const data = await service.listDefinitiveEntries(auth.companyId, query);
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao listar entradas definitivas.");
+  }
+}
+
+export async function getDefinitiveEntryById(req: FastifyRequest, rep: FastifyReply) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const params = PurchaseEntryIdParamsSchema.parse(req.params);
+    const data = await service.getDefinitiveEntryById(auth.companyId, params.id);
+
+    if (!data) {
+      return rep.status(404).send({
+        statusCode: 404,
+        error: "Not Found",
+        message: "Entrada de compra não encontrada.",
+      });
+    }
+
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao carregar entrada de compra.");
+  }
+}
+
+export async function previewConfirmation(
+  req: FastifyRequest,
+  rep: FastifyReply,
+) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const params = PurchaseEntryIdParamsSchema.parse(req.params);
+
+    const data = await service.previewConfirmation(auth.companyId, params.id);
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao gerar preview da confirmação.");
+  }
+}
+
+export async function updateImportItemAllocation(
+  req: FastifyRequest,
+  rep: FastifyReply,
+) {
+  try {
+    const auth = getAuthOrThrow(req);
+    const params = PurchaseEntryItemParamsSchema.parse(req.params);
+    const body = UpdateImportItemAllocationSchema.parse(req.body);
+
+    const data = await service.updateImportItemAllocation(
+      auth.companyId,
+      params.id,
+      params.itemId,
+      body,
+    );
+
+    return rep.send(data);
+  } catch (err: any) {
+    return sendHandledError(rep, err, "Erro ao atualizar rateio manual do item.");
   }
 }

@@ -4,139 +4,175 @@ import { requireAuth, requirePermission } from "../../config/prehandlers";
 import { requireModule } from "../../config/requireModule";
 
 export async function purchaseEntriesRoutes(app: FastifyInstance) {
-  app.register(
-    async function (app) {
-      app.addHook("preHandler", requireModule("commercial.purchase_entries"));
+    app.register(
+        async function (app) {
+            app.addHook("preHandler", requireModule("commercial.purchase_entries"));
 
-      app.get(
-        "/financial-options",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+            app.get(
+                "/financial-options",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.getFinancialOptions,
+            );
+
+            app.get(
+                "/",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.listImports,
+            );
+
+            app.get(
+                "/:id",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.getImportById,
+            );
+
+            app.post(
+                "/import-xml",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.import")],
+                },
+                controller.importXml,
+            );
+
+            app.put(
+                "/:id/financial",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.updateImportFinancial,
+            );
+
+            app.put(
+                "/:id/logistics",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.updateImportLogistics,
+            );
+
+            app.put(
+                "/:id/match-supplier",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.matchSupplier,
+            );
+
+            app.post(
+                "/:id/create-supplier",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.createSupplierFromImport,
+            );
+
+            app.put(
+                "/:id/items/:itemId",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.updateImportItem,
+            );
+
+            app.put(
+                "/:id/items/:itemId/match-product",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.matchProduct,
+            );
+
+            app.post(
+                "/:id/items/:itemId/create-product",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.createProductFromImportItem,
+            );
+
+            app.put(
+                "/:id/installments/:installmentId",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.updateImportInstallment,
+            );
+
+            app.post(
+                "/:id/confirm",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.confirm")],
+                },
+                controller.confirmImport,
+            );
+
+            app.patch(
+                "/:id/cancel",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.cancelImport,
+            );
+
+            app.get(
+                "/suppliers-mini",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.listSuppliersMini,
+            );
+
+            app.get(
+                "/products-mini",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.listProductsMini,
+            );
+
+            app.get(
+                "/entries",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.listDefinitiveEntries,
+            );
+
+            app.get(
+                "/entries/:id",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.read")],
+                },
+                controller.getDefinitiveEntryById,
+            );
+
+            app.put(
+                "/:id/economics",
+                {
+                    preHandler: [requireAuth, requirePermission("purchase_entries.update")],
+                },
+                controller.updateImportEconomics,
+            );
+
+            app.post(
+                "/:id/preview-confirmation",
+                { preHandler: [requireAuth] },
+                controller.previewConfirmation
+            );
+
+            app.put(
+                "/:id/items/:itemId/allocation",
+                { preHandler: [requireAuth] },
+                controller.updateImportItemAllocation
+            );
+            
         },
-        controller.getFinancialOptions,
-      );
-
-      app.get(
-        "/",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
-        },
-        controller.listImports,
-      );
-
-      app.get(
-        "/:id",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
-        },
-        controller.getImportById,
-      );
-
-      app.post(
-        "/import-xml",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.import")],
-        },
-        controller.importXml,
-      );
-
-      app.put(
-        "/:id/financial",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.updateImportFinancial,
-      );
-
-      app.put(
-        "/:id/logistics",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.updateImportLogistics,
-      );
-
-      app.put(
-        "/:id/match-supplier",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.matchSupplier,
-      );
-
-      app.post(
-        "/:id/create-supplier",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.createSupplierFromImport,
-      );
-
-      app.put(
-        "/:id/items/:itemId",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.updateImportItem,
-      );
-
-      app.put(
-        "/:id/items/:itemId/match-product",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.matchProduct,
-      );
-
-      app.post(
-        "/:id/items/:itemId/create-product",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.createProductFromImportItem,
-      );
-
-      app.put(
-        "/:id/installments/:installmentId",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.updateImportInstallment,
-      );
-
-      app.post(
-        "/:id/confirm",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.confirm")],
-        },
-        controller.confirmImport,
-      );
-
-      app.patch(
-        "/:id/cancel",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.update")],
-        },
-        controller.cancelImport,
-      );
-
-      app.get(
-        "/suppliers-mini",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
-        },
-        controller.listSuppliersMini,
-      );
-
-      app.get(
-        "/products-mini",
-        {
-          preHandler: [requireAuth, requirePermission("purchase_entries.read")],
-        },
-        controller.listProductsMini,
-      );
-
-    },
-    { prefix: "/purchase-entry-imports" },
-  );
+        { prefix: "/purchase-entry-imports" },
+    );
 }

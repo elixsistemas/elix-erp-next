@@ -454,49 +454,78 @@ Evolução:
 
 Muito comum em ERPs maduros.
 
-* [x] entradas por XML com staging
-  * [x] staging de cabeçalho
-  * [x] staging de itens
-  * [x] importação XML
-  * [x] revisão de vínculos
-  * [x] criação assistida de fornecedor
-  * [x] criação assistida de produto
-  * [ ] confirmação
-  * [ ] integração estoque
-  * [ ] integração contas a pagar
-* [ ] solicitações de compra
-* [ ] cotações
-* [ ] pedidos de compra
-* [ ] entrada estoque
+[x] entradas por XML com staging
+  [x] staging de cabeçalho
+  [x] staging de itens
+  [x] staging de parcelas
+  [x] importação XML
+  [x] detecção de duplicidade por chave de acesso
+  [x] validação de pertencimento do XML à empresa
+  [x] revisão de vínculos fornecedor
+  [x] revisão de vínculos produto
+  [x] criação assistida de fornecedor
+  [x] criação assistida de produto
+  [x] edição de itens
+  [x] edição de parcelas
+  [x] edição de dados financeiros
+  [x] edição logística
+  [x] motor econômico no staging
+  [x] edição de política de custo
+  [x] edição de política de preço
+  [x] edição de rateio
+  [x] preview antes da confirmação
+  [x] simulação de preço antes da confirmação
+  [x] rateio manual por item
+  [x] confirmação da importação
+  [x] criação da entrada definitiva
+  [x] criação dos itens definitivos
+  [x] criação das parcelas definitivas
+  [x] integração de contas a pagar
+  [x] integração de estoque
+  [x] atualização de custo do produto
+  [x] aplicação de política de preço no produto
+  [x] listagem de entradas definitivas
+  [x] detalhe da entrada definitiva
+  [x] resumo econômico pós-confirmação
 
+[ ] solicitações de compra
+[ ] cotações
+[ ] pedidos de compra
+[ ] entrada manual
 
-## Purchase Entry / XML de Entrada
+## Pendências / evoluções do módulo de entradas XML
 
-* [x] Upload e parsing de XML NF-e
-* [x] Persistência em staging (`purchase_entry_imports`)
-* [x] Persistência de itens (`purchase_entry_import_items`)
-* [x] Persistência de parcelas (`purchase_entry_import_installments`)
-* [x] Detecção de duplicidade por chave de acesso
-* [x] Validação de pertencimento do XML à empresa atual
-* [x] Match automático de fornecedor por documento
-* [x] Match automático de produto por EAN/nome exato
-* [x] Criação assistida de fornecedor
-* [x] Criação assistida de produto com `ncm_id`
-* [x] Edição de itens antes da confirmação
-* [x] Edição de parcelas antes da confirmação
-* [x] Classificação financeira no staging
-* [ ] Confirmação operacional da entrada
-* [ ] Geração de movimentações de estoque
-* [ ] Geração parcelada de contas a pagar
-* [x] Tratamento semântico de conflitos (`409`) para XML duplicado
-* [ ] Importação e vínculo de transportadora
-* [ ] Rateio avançado de frete/despesas por item
-* [ ] Política de custo médio / último custo
-* [ ] Política de markup / margem / preço sugerido
-* [ ] Entidade definitiva `purchase_entries`
-* [ ] Integração com pedido de compra
-* [ ] Three-way matching (pedido, nota, recebimento)
+[ ] garantir carga completa e atualizada da tabela `fiscal_ncm` antes de uso em produção
+[ ] validar fechamento automático dos rateios manuais antes da confirmação
+[ ] exibir divergência entre totais do XML, duplicatas e pagamentos
+[ ] calcular e exibir margem estimada no preview pré-confirmação
+[ ] suportar custo médio ponderado com base no estoque anterior
+[ ] persistir histórico de custo e preço por item/produto
+[ ] avaliar evolução da tabela `inventory_movements` para guardar custo da movimentação
+[ ] aprimorar UX da revisão de transportadora e veículo
+[ ] permitir configuração padrão de política de custo/preço por empresa
 
+# CUSTO E PRECIFICAÇÃO
+
+[ ] cálculo de custo final (landed cost)
+[ ] rateio de frete
+[ ] rateio de seguro
+[ ] rateio de outras despesas
+[ ] desconto rateado
+
+[ ] política de custo
+  [ ] último custo
+  [ ] custo médio
+  [ ] custo médio ponderado
+
+[ ] política de preço
+  [ ] markup
+  [ ] margem
+  [ ] preço sugerido
+
+[ ] cálculo automático de preço de venda
+[ ] atualização automática de preço após compra
+[ ] histórico de custos do produto
 ---
 
 

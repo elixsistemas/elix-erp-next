@@ -1,10 +1,15 @@
 import { api } from "@/shared/api/client";
 import type {
   ConfirmImportResponse,
+  PurchaseEntryConfirmationPreview,
+  PurchaseEntryDetails,
   PurchaseEntryImportDetails,
   PurchaseEntryImportRow,
+  PurchaseEntryRow,
+  UpdateImportEconomicsPayload,
   UpdateImportFinancialPayload,
   UpdateImportInstallmentPayload,
+  UpdateImportItemAllocationPayload,
   UpdateImportItemPayload,
   UpdateImportLogisticsPayload,
   FinancialOptions,
@@ -168,5 +173,70 @@ export async function listPurchaseEntrySuppliersMini(): Promise<SupplierMini[]> 
 export async function listPurchaseEntryProductsMini(): Promise<ProductMini[]> {
   return api<ProductMini[]>(`${BASE}/products-mini`, {
     method: "GET",
+  });
+}
+
+export async function listPurchaseEntries(params?: {
+  status?: string;
+  q?: string;
+  supplierId?: number;
+  from?: string;
+  to?: string;
+  limit?: number;
+  offset?: number;
+}): Promise<PurchaseEntryRow[]> {
+  const search = new URLSearchParams();
+
+  if (params?.status) search.set("status", params.status);
+  if (params?.q) search.set("q", params.q);
+  if (params?.supplierId) search.set("supplierId", String(params.supplierId));
+  if (params?.from) search.set("from", params.from);
+  if (params?.to) search.set("to", params.to);
+  if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.offset) search.set("offset", String(params.offset));
+
+  const url = search.toString()
+    ? `${BASE}/entries?${search.toString()}`
+    : `${BASE}/entries`;
+
+  return api<PurchaseEntryRow[]>(url, {
+    method: "GET",
+  });
+}
+
+export async function getPurchaseEntry(
+  id: number,
+): Promise<PurchaseEntryDetails> {
+  return api<PurchaseEntryDetails>(`${BASE}/entries/${id}`, {
+    method: "GET",
+  });
+}
+
+export async function updatePurchaseEntryEconomics(
+  id: number,
+  payload: UpdateImportEconomicsPayload,
+) {
+  return api(`${BASE}/${id}/economics`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export async function previewPurchaseEntryConfirmation(
+  id: number,
+): Promise<PurchaseEntryConfirmationPreview> {
+  return api<PurchaseEntryConfirmationPreview>(`${BASE}/${id}/preview-confirmation`, {
+    method: "POST",
+  });
+}
+
+export async function updatePurchaseEntryItemAllocation(
+  id: number,
+  itemId: number,
+  payload: UpdateImportItemAllocationPayload,
+) {
+  return api(`${BASE}/${id}/items/${itemId}/allocation`, {
+    method: "PUT",
+    body: payload,
   });
 }

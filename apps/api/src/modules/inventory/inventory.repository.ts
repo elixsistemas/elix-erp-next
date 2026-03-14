@@ -126,7 +126,7 @@ export async function getStock(
     .input("company_id", companyId)
     .input("product_id", productId)
     .query<{ on_hand: number }>(`
-      SELECT CAST(stock AS INT) AS on_hand
+      SELECT CAST(stock AS decimal(18,4)) AS on_hand
       FROM dbo.v_product_stock
       WHERE company_id = @company_id
         AND product_id = @product_id
@@ -151,7 +151,7 @@ export async function listStock(
         kind,
         uom,
         active,
-        CAST(stock AS INT) AS on_hand,
+        CAST(stock AS decimal(18,4)) AS on_hand,
         last_movement_at
       FROM dbo.v_product_stock
       WHERE company_id = @company_id

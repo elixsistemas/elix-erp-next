@@ -11,6 +11,8 @@ import type {
   UpdateImportInstallmentInput,
   UpdateImportItemInput,
   UpdateImportLogisticsInput,
+  UpdateImportEconomicsInput,
+  UpdateImportItemAllocationInput,
 } from "./purchase_entries.schema";
 
 function mapFreightMode(value: string | null): string | null {
@@ -546,4 +548,41 @@ export async function listSuppliersMini(companyId: number) {
 
 export async function listProductsMini(companyId: number) {
   return repo.listProductsMini(companyId);
+}
+
+export async function listDefinitiveEntries(
+  companyId: number,
+  query: import("./purchase_entries.schema").PurchaseEntryDefinitiveListQuery,
+) {
+  return repo.listDefinitiveEntries(companyId, query);
+}
+
+export async function getDefinitiveEntryById(companyId: number, id: number) {
+  return repo.getDefinitiveEntryById(companyId, id);
+}
+
+export async function updateImportEconomics(
+  companyId: number,
+  id: number,
+  payload: UpdateImportEconomicsInput,
+) {
+  return repo.updateImportEconomics(companyId, id, payload);
+}
+
+export async function previewConfirmation(companyId: number, importId: number) {
+  return repo.buildConfirmationPreview(companyId, importId);
+}
+
+export async function updateImportItemAllocation(
+  companyId: number,
+  importId: number,
+  itemId: number,
+  payload: UpdateImportItemAllocationInput,
+) {
+  return repo.updateImportItemManualAllocation(
+    companyId,
+    importId,
+    itemId,
+    payload,
+  );
 }
