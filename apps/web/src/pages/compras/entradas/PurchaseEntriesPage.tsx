@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { listPurchaseEntries } from "./purchase-entry-imports.service";
 import type { PurchaseEntryRow } from "./purchase-entry-imports.types";
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function money(value: number | null | undefined) {
+  if (value == null) return "—";
+
+  return value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Number(value || 0));
+  });
 }
 
 function badgeClass(status: string) {

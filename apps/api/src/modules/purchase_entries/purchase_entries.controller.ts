@@ -1,369 +1,406 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import * as service from "./purchase_entries.service";
-import {
-  CreateProductFromImportItemSchema,
-  CreateSupplierFromImportSchema,
-  ImportXmlSchema,
-  MatchProductSchema,
-  MatchSupplierSchema,
-  PurchaseEntryInstallmentParamsSchema,
-  PurchaseEntryItemParamsSchema,
-  PurchaseEntryListQuerySchema,
-  UpdateImportEconomicsSchema,
-  UpdateImportFinancialSchema,
-  UpdateImportInstallmentSchema,
-  UpdateImportItemSchema,
-  UpdateImportLogisticsSchema,
-  PurchaseEntryDefinitiveListQuerySchema,
-  PurchaseEntryIdParamsSchema,
-  UpdateImportItemAllocationSchema,
+import type {
+  CreateProductFromImportItemInput,
+  CreateSupplierFromImportInput,
+  PurchaseEntryDefinitiveListQuery,
+  PurchaseEntryImportStatus,
+  PurchaseEntryListQuery,
+  UpdateImportEconomicsInput,
+  UpdateImportFinancialInput,
+  UpdateImportInstallmentInput,
+  UpdateImportItemInput,
+  UpdateImportLogisticsInput,
 } from "./purchase_entries.schema";
 
-function getAuthOrThrow(req: FastifyRequest) {
-  if (!req.auth) {
-    const err = new Error("Não autenticado.") as Error & {
-      statusCode?: number;
-    };
-    err.statusCode = 401;
-    throw err;
-  }
+type AuthenticatedRequest = FastifyRequest & {
+  auth: {
+    userId: number;
+    companyId: number;
+    roles: string[];
+    perms: string[];
+  };
+};
 
-  return req.auth;
+function getCompanyId(req: FastifyRequest) {
+  return (req as AuthenticatedRequest).auth.companyId;
 }
 
-function sendHandledError(rep: FastifyReply, err: any, fallbackMessage: string) {
-  const statusCode = err?.statusCode ?? 500;
+function getUserId(req: FastifyRequest) {
+  return (req as AuthenticatedRequest).auth.userId;
+}
 
-  let error = "Internal Server Error";
-  if (statusCode === 409) error = "Conflict";
-  else if (statusCode === 422) error = "Unprocessable Entity";
-  else if (statusCode === 404) error = "Not Found";
-  else if (statusCode === 401) error = "Unauthorized";
-  else if (statusCode === 400) error = "Bad Request";
+function getParamId(req: FastifyRequest, key = "id") {
+  const params = req.params as Record<string, string>;
+  return Number(params[key]);
+}
 
-  return rep.status(statusCode).send({
-    statusCode,
-    error,
-    message: err?.message ?? fallbackMessage,
-    code: err?.code,
-    importId: err?.importId,
-    details: err?.details,
+function sendError(reply: FastifyReply, error: unknown) {
+  const err = error as Error & {
+    statusCode?: number;
+    code?: string;
+    details?: unknown;
+  };
+
+  const statusCode = err.statusCode ?? 500;
+
+  return reply.status(statusCode).send({
+    error: err.code ?? "PURCHASE_ENTRIES_ERROR",
+    message: err.message ?? "Erro interno.",
+    details: err.details ?? null,
   });
 }
 
-export async function listImports(req: FastifyRequest, rep: FastifyReply) {
+export async function importXml(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const query = PurchaseEntryListQuerySchema.parse(req.query);
+    const companyId = getCompanyId(req);
+    const body = req.body as {
+      fileName: string;
+      xmlContent: string;
+    };
 
-    const data = await service.listImports(auth.companyId, query);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao listar importações.");
+    const result = await service.importPurchaseEntryXml(
+      companyId,
+      body.xmlContent,
+      body.fileName,
+    );
+
+    return reply.status(201).send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function getImportById(req: FastifyRequest, rep: FastifyReply) {
+export async function listImports(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
+    const companyId = getCompanyId(req);
+    const query = req.query as PurchaseEntryListQuery;
 
-    const data = await service.getImportById(auth.companyId, params.id);
+    const result = await service.listPurchaseEntryImports(companyId, query);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
 
-    if (!data) {
-      return rep.status(404).send({
-        statusCode: 404,
-        error: "Not Found",
+export async function getImportById(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+
+    const result = await service.getPurchaseEntryImportById(companyId, id);
+
+    if (!result) {
+      return reply.status(404).send({
+        error: "PURCHASE_ENTRY_IMPORT_NOT_FOUND",
         message: "Importação não encontrada.",
       });
     }
 
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao carregar importação.");
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function getFinancialOptions(req: FastifyRequest, rep: FastifyReply) {
+export async function getFinancialOptions(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const data = await service.getFinancialOptions(auth.companyId);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao carregar opções financeiras.");
+    const companyId = getCompanyId(req);
+    const result = await service.getFinancialOptions(companyId);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function importXml(req: FastifyRequest, rep: FastifyReply) {
+export async function listSuppliersMini(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const body = ImportXmlSchema.parse(req.body);
-
-    const data = await service.importXml(auth.companyId, auth.userId, body);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao importar XML.");
+    const companyId = getCompanyId(req);
+    const result = await service.listSuppliersMini(companyId);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function updateImportEconomics(req: FastifyRequest, rep: FastifyReply) {
+export async function listProductsMini(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-    const body = UpdateImportEconomicsSchema.parse(req.body);
-
-    const data = await service.updateImportEconomics(auth.companyId, params.id, body);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao atualizar motor econômico da importação.");
+    const companyId = getCompanyId(req);
+    const result = await service.listProductsMini(companyId);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function updateImportFinancial(req: FastifyRequest, rep: FastifyReply) {
+export async function matchSupplier(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-    const body = UpdateImportFinancialSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const body = req.body as { supplierId: number };
 
-    const data = await service.updateImportFinancial(auth.companyId, params.id, body);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao atualizar classificação financeira.");
+    const result = await service.updateImportSupplier(
+      companyId,
+      id,
+      Number(body.supplierId),
+    );
+
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function updateImportLogistics(req: FastifyRequest, rep: FastifyReply) {
+export async function matchProduct(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-    const body = UpdateImportLogisticsSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const itemId = getParamId(req, "itemId");
+    const body = req.body as { productId: number };
 
-    const data = await service.updateImportLogistics(auth.companyId, params.id, body);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao atualizar dados logísticos.");
+    const result = await service.updateImportItemProduct(
+      companyId,
+      id,
+      itemId,
+      Number(body.productId),
+    );
+
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function matchSupplier(req: FastifyRequest, rep: FastifyReply) {
+export async function updateImportItem(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-    const body = MatchSupplierSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const itemId = getParamId(req, "itemId");
+    const body = req.body as UpdateImportItemInput;
 
-    const data = await service.matchSupplier(auth.companyId, params.id, body);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao vincular fornecedor.");
+    const result = await service.updateImportItem(companyId, id, itemId, body);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function createSupplierFromImport(
-  req: FastifyRequest,
-  rep: FastifyReply,
-) {
+export async function updateImportInstallment(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-    const body = CreateSupplierFromImportSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const installmentId = getParamId(req, "installmentId");
+    const body = req.body as UpdateImportInstallmentInput;
 
-    const data = await service.createSupplierFromImport(auth.companyId, params.id, body);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao criar fornecedor a partir do XML.");
-  }
-}
-
-export async function matchProduct(req: FastifyRequest, rep: FastifyReply) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryItemParamsSchema.parse(req.params);
-    const body = MatchProductSchema.parse(req.body);
-
-    const data = await service.matchProduct(
-      auth.companyId,
-      params.id,
-      params.itemId,
+    const result = await service.updateImportInstallment(
+      companyId,
+      id,
+      installmentId,
       body,
     );
 
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao vincular produto.");
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function createProductFromImportItem(
-  req: FastifyRequest,
-  rep: FastifyReply,
-) {
+export async function updateImportFinancial(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryItemParamsSchema.parse(req.params);
-    const body = CreateProductFromImportItemSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const body = req.body as UpdateImportFinancialInput;
 
-    const data = await service.createProductFromImportItem(
-      auth.companyId,
-      params.id,
-      params.itemId,
+    const result = await service.updateImportFinancial(companyId, id, body);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function updateImportLogistics(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const body = req.body as UpdateImportLogisticsInput;
+
+    const result = await service.updateImportLogistics(companyId, id, body);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function updateImportEconomics(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const body = req.body as UpdateImportEconomicsInput;
+
+    const result = await service.updateImportEconomics(companyId, id, body);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function updateImportItemAllocation(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const importId = getParamId(req);
+    const itemId = getParamId(req, "itemId");
+    const body = req.body as {
+      freightAllocated?: number;
+      insuranceAllocated?: number;
+      otherExpensesAllocated?: number;
+      discountAllocated?: number;
+    };
+
+    const result = await service.updateImportItemManualAllocation(
+      companyId,
+      importId,
+      itemId,
       body,
     );
 
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao criar produto a partir do item.");
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function updateImportItem(req: FastifyRequest, rep: FastifyReply) {
+export async function getImportPendingCounts(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryItemParamsSchema.parse(req.params);
-    const body = UpdateImportItemSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
 
-    const data = await service.updateImportItem(
-      auth.companyId,
-      params.id,
-      params.itemId,
+    const result = await service.getImportPendingCounts(companyId, id);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function previewConfirmation(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+
+    const result = await service.buildConfirmationPreview(companyId, id);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function confirmImport(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const userId = getUserId(req);
+    const id = getParamId(req);
+
+    const result = await service.confirmImport(companyId, userId, id);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function cancelImport(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+
+    const result = await service.cancelImport(companyId, id);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function updateImportStatus(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
+    const body = req.body as {
+      status: PurchaseEntryImportStatus;
+      matchSummary?: string | null;
+    };
+
+    const result = await service.updateImportStatus(
+      companyId,
+      id,
+      body.status,
+      body.matchSummary,
+    );
+
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function createSupplierFromImport(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const importId = getParamId(req);
+    const body = (req.body ?? {}) as CreateSupplierFromImportInput;
+
+    const result = await service.createSupplierFromImport(companyId, importId, body);
+    return reply.status(201).send(result);
+  } catch (error) {
+    return sendError(reply, error);
+  }
+}
+
+export async function createProductFromImportItem(req: FastifyRequest, reply: FastifyReply) {
+  try {
+    const companyId = getCompanyId(req);
+    const importId = getParamId(req);
+    const itemId = getParamId(req, "itemId");
+    const body = (req.body ?? {}) as CreateProductFromImportItemInput;
+
+    const result = await service.createProductFromImportItem(
+      companyId,
+      importId,
+      itemId,
       body,
     );
 
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao atualizar item da importação.");
+    return reply.status(201).send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function updateImportInstallment(
-  req: FastifyRequest,
-  rep: FastifyReply,
-) {
+export async function listDefinitiveEntries(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryInstallmentParamsSchema.parse(req.params);
-    const body = UpdateImportInstallmentSchema.parse(req.body);
+    const companyId = getCompanyId(req);
+    const query = req.query as PurchaseEntryDefinitiveListQuery;
 
-    const data = await service.updateImportInstallment(
-      auth.companyId,
-      params.id,
-      params.installmentId,
-      body,
-    );
-
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao atualizar parcela da importação.");
+    const result = await service.listDefinitiveEntries(companyId, query);
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }
 
-export async function confirmImport(req: FastifyRequest, rep: FastifyReply) {
+export async function getDefinitiveEntryById(req: FastifyRequest, reply: FastifyReply) {
   try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
+    const companyId = getCompanyId(req);
+    const id = getParamId(req);
 
-    const data = await service.confirmImport(auth.companyId, auth.userId, params.id);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao confirmar importação.");
-  }
-}
+    const result = await service.getDefinitiveEntryById(companyId, id);
 
-export async function cancelImport(req: FastifyRequest, rep: FastifyReply) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-
-    const data = await service.cancelImport(auth.companyId, params.id);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao cancelar importação.");
-  }
-}
-
-export async function listSuppliersMini(req: FastifyRequest, rep: FastifyReply) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const data = await service.listSuppliersMini(auth.companyId);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao carregar fornecedores.");
-  }
-}
-
-export async function listProductsMini(req: FastifyRequest, rep: FastifyReply) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const data = await service.listProductsMini(auth.companyId);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao carregar produtos.");
-  }
-}
-
-export async function listDefinitiveEntries(req: FastifyRequest, rep: FastifyReply) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const query = PurchaseEntryDefinitiveListQuerySchema.parse(req.query);
-    const data = await service.listDefinitiveEntries(auth.companyId, query);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao listar entradas definitivas.");
-  }
-}
-
-export async function getDefinitiveEntryById(req: FastifyRequest, rep: FastifyReply) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-    const data = await service.getDefinitiveEntryById(auth.companyId, params.id);
-
-    if (!data) {
-      return rep.status(404).send({
-        statusCode: 404,
-        error: "Not Found",
+    if (!result) {
+      return reply.status(404).send({
+        error: "PURCHASE_ENTRY_NOT_FOUND",
         message: "Entrada de compra não encontrada.",
       });
     }
 
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao carregar entrada de compra.");
-  }
-}
-
-export async function previewConfirmation(
-  req: FastifyRequest,
-  rep: FastifyReply,
-) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryIdParamsSchema.parse(req.params);
-
-    const data = await service.previewConfirmation(auth.companyId, params.id);
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao gerar preview da confirmação.");
-  }
-}
-
-export async function updateImportItemAllocation(
-  req: FastifyRequest,
-  rep: FastifyReply,
-) {
-  try {
-    const auth = getAuthOrThrow(req);
-    const params = PurchaseEntryItemParamsSchema.parse(req.params);
-    const body = UpdateImportItemAllocationSchema.parse(req.body);
-
-    const data = await service.updateImportItemAllocation(
-      auth.companyId,
-      params.id,
-      params.itemId,
-      body,
-    );
-
-    return rep.send(data);
-  } catch (err: any) {
-    return sendHandledError(rep, err, "Erro ao atualizar rateio manual do item.");
+    return reply.send(result);
+  } catch (error) {
+    return sendError(reply, error);
   }
 }

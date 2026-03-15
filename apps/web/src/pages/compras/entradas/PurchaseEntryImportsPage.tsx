@@ -2,11 +2,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { usePurchaseEntryImports } from "./usePurchaseEntryImports";
 
-function money(value: number) {
-    return new Intl.NumberFormat("pt-BR", {
-        style: "currency",
-        currency: "BRL",
-    }).format(Number(value || 0));
+function money(value: number | null | undefined) {
+  if (value == null) return "—";
+
+  return value.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 function badgeClass(status: string) {

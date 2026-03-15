@@ -9,11 +9,13 @@ import type {
 
 const CONFIRM_SUMMARY_STORAGE_KEY = "purchase-entry-confirm-summary";
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function money(value: number | null | undefined) {
+  if (value == null) return "—";
+
+  return value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(Number(value || 0));
+  });
 }
 
 function badgeClass(status: string) {

@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useAccountsPayable } from "./useAccountsPayable";
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function money(value: number | null | undefined) {
+  if (value == null) return "—";
+
+  return value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(value);
+  });
 }
 
 function badgeClass(status: string) {

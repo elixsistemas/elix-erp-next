@@ -30,10 +30,12 @@ export function usePurchaseEntryImports(): UsePurchaseEntryImportsResult {
     setError(null);
 
     try {
-      const data = await listPurchaseEntryImports({
-        q: q.trim() || undefined,
-        status: status || undefined,
-      });
+const data = await listPurchaseEntryImports({
+  q: q.trim() || undefined,
+  status: status || undefined,
+  limit: 50,
+  offset: 0,
+});
 
       setRows(data);
     } catch (err: any) {

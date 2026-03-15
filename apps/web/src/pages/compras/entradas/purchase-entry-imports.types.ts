@@ -188,10 +188,31 @@ export type ConfirmImportEconomicsRow = {
   previousCost: number;
   newCost: number;
   previousPrice: number;
-  suggestedPrice: number;
+  suggestedPrice: number | null;
   appliedPrice: number;
   priceChanged: boolean;
   movedToStock: boolean;
+  currentMarginPercent: number;
+  projectedMarginPercent: number;
+};
+
+export type ConfirmationPreviewItem = {
+  importItemId: number;
+  lineNo: number;
+  productId: number | null;
+  productName: string | null;
+  quantity: number;
+  unitPrice: number;
+  landedUnitCost: number;
+  landedTotalCost: number;
+  previousCost: number;
+  newCost: number;
+  previousPrice: number;
+  suggestedPrice: number | null;
+  appliedPrice: number;
+  movedToStock: boolean;
+  currentMarginPercent: number;
+  projectedMarginPercent: number;
 };
 
 export type PurchaseEntryStatus =
@@ -313,6 +334,8 @@ export type PurchaseEntryConfirmationPreviewRow = {
   suggestedPrice: number | null;
   appliedPrice: number;
   movedToStock: boolean;
+  currentMarginPercent: number;
+  projectedMarginPercent: number;
 };
 
 export type PurchaseEntryConfirmationPreview = {
@@ -326,3 +349,5 @@ export type PurchaseEntryConfirmationPreview = {
   };
   items: PurchaseEntryConfirmationPreviewRow[];
 };
+
+export type ConfirmationPreview = PurchaseEntryConfirmationPreview;

@@ -1,588 +1,551 @@
 import { XMLParser } from "fast-xml-parser";
-import * as repo from "./purchase_entries.repository";
+import * as importRepo from "./purchase_entries.repository";
+import * as definitiveRepo from "./purchase_entries.definitive.repository";
 import type {
-  CreateProductFromImportItemInput,
-  CreateSupplierFromImportInput,
-  ImportXmlInput,
-  MatchProductInput,
-  MatchSupplierInput,
-  PurchaseEntryListQuery,
-  UpdateImportFinancialInput,
-  UpdateImportInstallmentInput,
-  UpdateImportItemInput,
-  UpdateImportLogisticsInput,
-  UpdateImportEconomicsInput,
-  UpdateImportItemAllocationInput,
+    CreateProductFromImportItemInput,
+    CreateSupplierFromImportInput,
+    PurchaseEntryDefinitiveListQuery,
+    PurchaseEntryImportStatus,
+    PurchaseEntryListQuery,
+    UpdateImportEconomicsInput,
+    UpdateImportFinancialInput,
+    UpdateImportInstallmentInput,
+    UpdateImportItemInput,
+    UpdateImportLogisticsInput,
 } from "./purchase_entries.schema";
 
+function asArray<T>(value: T | T[] | null | undefined): T[] {
+    if (value == null) return [];
+    return Array.isArray(value) ? value : [value];
+}
+
+function text(value: unknown): string | null {
+    if (value == null) return null;
+    const v = String(value).trim();
+    return v || null;
+}
+
+function num(value: unknown): number {
+    if (value == null || value === "") return 0;
+    const normalized = String(value).replace(",", ".");
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function extractAccessKey(infNFe: any): string {
+    const attrs = infNFe?.["@_Id"] ?? infNFe?.["@_id"] ?? "";
+    return String(attrs).replace(/^NFe/i, "").trim();
+}
+
 function mapFreightMode(value: string | null): string | null {
-  const v = String(value ?? "").trim();
+    const v = String(value ?? "").trim();
 
-  switch (v) {
-    case "0":
-      return "CIF";
-    case "1":
-      return "FOB";
-    case "2":
-      return "THIRD_PARTY";
-    case "3":
-      return "OWN_SENDER";
-    case "4":
-      return "OWN_RECEIVER";
-    case "9":
-      return "NO_FREIGHT";
-    default:
-      return null;
-  }
+    switch (v) {
+        case "0":
+            return "CIF";
+        case "1":
+            return "FOB";
+        case "2":
+            return "THIRD_PARTY";
+        case "3":
+        case "4":
+            return "OWN";
+        case "9":
+            return "NO_FREIGHT";
+        default:
+            return null;
+    }
 }
 
-function ensureArray<T>(value: T | T[] | undefined | null): T[] {
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
-
-function onlyDigits(value: unknown) {
-  if (value === undefined || value === null) return "";
-  return String(value).replace(/\D/g, "");
-}
-
-function getText(value: any): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value === "string") return value.trim() || null;
-  if (typeof value === "number") return String(value);
-  return null;
-}
-
-function toNumber(value: any) {
-  const normalized = String(value ?? "0").replace(",", ".");
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function extractAccessKey(parsed: any): string | null {
-  const idAttr =
-    parsed?.nfeProc?.NFe?.infNFe?.["@_Id"] || parsed?.NFe?.infNFe?.["@_Id"];
-
-  if (idAttr && typeof idAttr === "string") {
-    return idAttr.replace(/^NFe/, "");
-  }
-
-  const chNFe =
-    parsed?.nfeProc?.protNFe?.infProt?.chNFe || parsed?.protNFe?.infProt?.chNFe;
-
-  if (typeof chNFe === "string") {
-    return chNFe;
-  }
-
-  return null;
-}
-
-function makeConflictError(
-  message: string,
-  code: string,
-  extra?: Record<string, unknown>,
+export async function importPurchaseEntryXml(
+    companyId: number,
+    xmlContent: string,
+    fileName: string,
 ) {
-  const err = new Error(message) as Error & {
-    statusCode?: number;
-    code?: string;
-    importId?: number;
-    details?: Record<string, unknown>;
-  };
-
-  err.statusCode = 409;
-  err.code = code;
-
-  if (extra) {
-    Object.assign(err, extra);
-    err.details = extra;
-  }
-
-  return err;
-}
-
-function makeValidationError(
-  message: string,
-  code: string,
-  extra?: Record<string, unknown>,
-) {
-  const err = new Error(message) as Error & {
-    statusCode?: number;
-    code?: string;
-    details?: Record<string, unknown>;
-  };
-
-  err.statusCode = 422;
-  err.code = code;
-
-  if (extra) {
-    Object.assign(err, extra);
-    err.details = extra;
-  }
-
-  return err;
-}
-
-export async function importXml(
-  companyId: number,
-  _userId: number,
-  input: ImportXmlInput,
-) {
-  const parser = new XMLParser({
-    ignoreAttributes: false,
-    attributeNamePrefix: "@_",
-    parseTagValue: false,
-    parseAttributeValue: false,
-    trimValues: true,
-  });
-
-  let parsed: any;
-
-  try {
-    parsed = parser.parse(input.xmlContent);
-  } catch {
-    throw makeValidationError("XML inválido.", "PURCHASE_ENTRY_XML_INVALID");
-  }
-
-  const infNFe = parsed?.nfeProc?.NFe?.infNFe ?? parsed?.NFe?.infNFe;
-
-  if (!infNFe) {
-    throw makeValidationError(
-      "Estrutura de NF-e não encontrada.",
-      "PURCHASE_ENTRY_XML_STRUCTURE_INVALID",
-    );
-  }
-
-  const accessKey = extractAccessKey(parsed);
-
-  if (!accessKey || accessKey.length !== 44) {
-    throw makeValidationError(
-      "Chave de acesso não encontrada ou inválida.",
-      "PURCHASE_ENTRY_XML_ACCESS_KEY_INVALID",
-    );
-  }
-
-  const duplicateId = await repo.existsImportByAccessKey(companyId, accessKey);
-
-  if (duplicateId) {
-    throw makeConflictError(
-      "XML já importado para esta empresa.",
-      "PURCHASE_ENTRY_XML_DUPLICATE",
-      {
-        importId: duplicateId,
-        accessKey,
-      },
-    );
-  }
-
-  const ide = infNFe?.ide ?? {};
-  const emit = infNFe?.emit ?? {};
-  const enderEmit = emit?.enderEmit ?? {};
-  const dest = infNFe?.dest ?? {};
-  const cobr = infNFe?.cobr ?? {};
-  const transp = infNFe?.transp ?? {};
-  const transporta = transp?.transporta ?? {};
-  const veicTransp = transp?.veicTransp ?? {};
-
-  const dups = ensureArray(cobr?.dup);
-  const det = ensureArray(infNFe?.det);
-  const totalIcms = infNFe?.total?.ICMSTot ?? {};
-
-  const supplierDocument =
-    onlyDigits(getText(emit?.CNPJ) || getText(emit?.CPF)) || null;
-
-  const destinatarioDocumento =
-    onlyDigits(getText(dest?.CNPJ) || getText(dest?.CPF)) || null;
-
-  const companyDocumentRaw = await repo.getCompanyDocument(companyId);
-  const companyDocument = onlyDigits(companyDocumentRaw);
-
-  if (!companyDocument) {
-    throw makeValidationError(
-      "A empresa atual está sem documento cadastrado para validar o XML.",
-      "PURCHASE_ENTRY_COMPANY_DOCUMENT_MISSING",
-    );
-  }
-
-  if (!destinatarioDocumento) {
-    throw makeValidationError(
-      "Destinatário do XML não encontrado.",
-      "PURCHASE_ENTRY_XML_DEST_MISSING",
-    );
-  }
-
-  if (destinatarioDocumento !== companyDocument) {
-    throw makeConflictError(
-      "Este XML não pertence à empresa atual.",
-      "PURCHASE_ENTRY_XML_COMPANY_MISMATCH",
-      {
-        xmlDestDocument: destinatarioDocumento,
-        companyDocument,
-        accessKey,
-      },
-    );
-  }
-
-  const supplierId = await repo.findSupplierByDocument(companyId, supplierDocument);
-
-  const items: Array<{
-    lineNo: number;
-    supplierCode: string | null;
-    ean: string | null;
-    description: string;
-    ncm: string | null;
-    cfop: string | null;
-    uom: string | null;
-    quantity: number;
-    unitPrice: number;
-    totalPrice: number;
-    productId: number | null;
-    matchStatus: "PENDING" | "MATCHED" | "REVIEW" | "NEW_PRODUCT";
-    matchNotes: string | null;
-    grossUnitCost: number;
-    freightAllocated: number;
-    insuranceAllocated: number;
-    otherExpensesAllocated: number;
-    discountAllocated: number;
-    landedTotalCost: number;
-    landedUnitCost: number;
-    weightKg: number | null;
-  }> = [];
-
-  let pendingCount = 0;
-  let matchedByEanCount = 0;
-  let matchedByNameCount = 0;
-
-  for (let i = 0; i < det.length; i++) {
-    const prod = det[i]?.prod ?? {};
-
-    const quantity = toNumber(prod?.qCom);
-    const unitPrice = toNumber(prod?.vUnCom);
-    const totalPrice = toNumber(prod?.vProd);
-
-    const match = await repo.findProductMatch(companyId, {
-      ean: getText(prod?.cEAN),
-      supplierCode: getText(prod?.cProd),
-      description: getText(prod?.xProd) ?? "Item sem descrição",
+    const parser = new XMLParser({
+        ignoreAttributes: false,
+        attributeNamePrefix: "@_",
+        parseTagValue: false,
+        trimValues: true,
     });
 
-    if (!match.productId) {
-      pendingCount += 1;
+    const parsed = parser.parse(xmlContent);
+    const nfeProc = parsed?.nfeProc ?? parsed?.NFe ?? parsed;
+    const nfe = nfeProc?.NFe ?? parsed?.NFe ?? parsed?.nfeProc?.NFe ?? parsed;
+    const infNFe = nfe?.infNFe;
+
+    if (!infNFe) {
+        throw new Error("XML NF-e inválido: tag infNFe não encontrada.");
     }
 
-    if (match.productId && match.matchNotes === "Match automático por EAN") {
-      matchedByEanCount += 1;
+    const accessKey = extractAccessKey(infNFe);
+    if (!accessKey || accessKey.length !== 44) {
+        throw new Error("Chave de acesso da NF-e inválida.");
     }
 
-    if (match.productId && match.matchNotes === "Match automático por nome exato") {
-      matchedByNameCount += 1;
+    const existingImportId = await importRepo.existsImportByAccessKey(companyId, accessKey);
+    if (existingImportId) {
+        const err = new Error("XML já importado anteriormente para esta empresa.") as Error & {
+            statusCode?: number;
+            code?: string;
+            details?: Record<string, unknown>;
+        };
+        err.statusCode = 409;
+        err.code = "PURCHASE_ENTRY_XML_DUPLICATE";
+        err.details = { importId: existingImportId, accessKey };
+        throw err;
     }
 
-    items.push({
-      lineNo: i + 1,
-      supplierCode: getText(prod?.cProd),
-      ean: getText(prod?.cEAN),
-      description: getText(prod?.xProd) ?? "Item sem descrição",
-      ncm: getText(prod?.NCM),
-      cfop: getText(prod?.CFOP),
-      uom: getText(prod?.uCom),
-      quantity,
-      unitPrice,
-      totalPrice,
-      productId: match.productId,
-      matchStatus: match.matchStatus,
-      matchNotes: match.matchNotes,
+    const companyDocument = await importRepo.getCompanyDocument(companyId);
 
-      grossUnitCost: unitPrice,
-      freightAllocated: 0,
-      insuranceAllocated: 0,
-      otherExpensesAllocated: 0,
-      discountAllocated: 0,
-      landedTotalCost: totalPrice,
-      landedUnitCost: quantity > 0 ? Number((totalPrice / quantity).toFixed(6)) : 0,
-      weightKg: null,
+    const recipientDocument =
+        text(infNFe?.dest?.CNPJ) ??
+        text(infNFe?.dest?.CPF) ??
+        text(infNFe?.dest?.cnpj) ??
+        text(infNFe?.dest?.cpf);
+
+    const issuerDocument =
+        text(infNFe?.emit?.CNPJ) ??
+        text(infNFe?.emit?.CPF) ??
+        text(infNFe?.emit?.cnpj) ??
+        text(infNFe?.emit?.cpf);
+
+    const normalizeDigits = (v: string | null) => String(v ?? "").replace(/\D/g, "");
+
+    if (
+        normalizeDigits(companyDocument) &&
+        normalizeDigits(recipientDocument) &&
+        normalizeDigits(companyDocument) !== normalizeDigits(recipientDocument)
+    ) {
+        const err = new Error(
+            "Este XML não pertence à empresa atual. O destinatário da NF-e difere do documento da empresa logada.",
+        ) as Error & {
+            statusCode?: number;
+            code?: string;
+            details?: Record<string, unknown>;
+        };
+
+        err.statusCode = 422;
+        err.code = "PURCHASE_ENTRY_XML_COMPANY_MISMATCH";
+        err.details = {
+            companyDocument: normalizeDigits(companyDocument),
+            xmlRecipientDocument: normalizeDigits(recipientDocument),
+            xmlIssuerDocument: normalizeDigits(issuerDocument),
+            accessKey,
+        };
+
+        throw err;
+    }
+
+    const ide = infNFe?.ide ?? {};
+    const emit = infNFe?.emit ?? {};
+    const transp = infNFe?.transp ?? {};
+    const total = infNFe?.total?.ICMSTot ?? {};
+    const cobr = infNFe?.cobr ?? {};
+    const detList = asArray(infNFe?.det);
+
+    const supplierDocument = text(emit?.CNPJ) ?? text(emit?.CPF);
+    const supplierName = text(emit?.xNome);
+    const supplierIe = text(emit?.IE);
+
+    const supplierAddressLine1 = [text(emit?.enderEmit?.xLgr), text(emit?.enderEmit?.nro)]
+        .filter(Boolean)
+        .join(", ") || null;
+
+    const supplierAddressLine2 = text(emit?.enderEmit?.xCpl);
+    const supplierDistrict = text(emit?.enderEmit?.xBairro);
+    const supplierCity = text(emit?.enderEmit?.xMun);
+    const supplierState = text(emit?.enderEmit?.UF);
+    const supplierZipCode = text(emit?.enderEmit?.CEP);
+    const supplierCountry = text(emit?.enderEmit?.cPais) || text(emit?.enderEmit?.xPais);
+
+    const carrierNameXml = text(transp?.transporta?.xNome);
+    const carrierDocumentXml = text(transp?.transporta?.CNPJ) ?? text(transp?.transporta?.CPF);
+    const carrierIeXml = text(transp?.transporta?.IE);
+    const freightMode = mapFreightMode(text(transp?.modFrete));
+
+    const items = [];
+    for (const det of detList) {
+        const prod = det?.prod ?? {};
+        const rawLineNo = det?.["@_nItem"] ?? det?.nItem ?? items.length + 1;
+        const lineNo: number = Number(rawLineNo);
+
+        const match = await importRepo.findProductMatch(companyId, {
+            ean: text(prod?.cEAN) ?? text(prod?.cEANTrib),
+            supplierCode: text(prod?.cProd),
+            description: text(prod?.xProd) ?? "",
+        });
+
+        const quantity = num(prod?.qCom);
+        const unitPrice = num(prod?.vUnCom);
+        const totalPrice = num(prod?.vProd);
+
+        items.push({
+            lineNo,
+            supplierCode: text(prod?.cProd),
+            ean: text(prod?.cEAN) ?? text(prod?.cEANTrib),
+            description: text(prod?.xProd) ?? "",
+            ncm: text(prod?.NCM),
+            cfop: text(prod?.CFOP),
+            uom: text(prod?.uCom),
+            quantity,
+            unitPrice,
+            totalPrice,
+            productId: match.productId,
+            matchStatus: match.matchStatus,
+            matchNotes: match.matchNotes,
+            grossUnitCost: unitPrice,
+            freightAllocated: 0,
+            insuranceAllocated: 0,
+            otherExpensesAllocated: 0,
+            discountAllocated: 0,
+            landedTotalCost: totalPrice,
+            landedUnitCost: quantity > 0 ? Number((totalPrice / quantity).toFixed(6)) : 0,
+            weightKg: null,
+        });
+    }
+
+    const dupList = asArray(cobr?.dup);
+    const installments =
+        dupList.length > 0
+            ? dupList.map((dup: any, index: number) => ({
+                lineNo: index + 1,
+                installmentNumber: text(dup?.nDup),
+                dueDate: text(dup?.dVenc),
+                amount: num(dup?.vDup),
+            }))
+            : [
+                {
+                    lineNo: 1,
+                    installmentNumber: "1",
+                    dueDate: text(ide?.dhEmi)?.slice(0, 10) ?? text(ide?.dEmi),
+                    amount: num(total?.vNF),
+                },
+            ];
+
+    const supplierId = await importRepo.findSupplierByDocument(companyId, supplierDocument);
+
+    const pendingCount = items.filter((item) => !item.productId).length;
+    const status: PurchaseEntryImportStatus =
+        pendingCount > 0 || !supplierId ? "MATCH_PENDING" : "READY";
+
+    const matchSummary = !supplierId
+        ? "Fornecedor pendente de vínculo"
+        : pendingCount > 0
+            ? `${pendingCount} item(ns) pendente(s) de revisão`
+            : "Pronto para confirmação";
+
+    const importId = await importRepo.createImport(companyId, {
+        accessKey,
+        invoiceNumber: text(ide?.nNF),
+        invoiceSeries: text(ide?.serie),
+        issueDate: text(ide?.dhEmi)?.slice(0, 10) ?? text(ide?.dEmi),
+
+        supplierDocument,
+        supplierName,
+        supplierIe,
+        supplierId,
+
+        supplierAddressLine1,
+        supplierAddressLine2,
+        supplierDistrict,
+        supplierCity,
+        supplierState,
+        supplierZipCode,
+        supplierCountry,
+
+        chartAccountId: null,
+        costCenterId: null,
+        paymentTermId: null,
+
+        totalAmount: num(total?.vNF),
+        productsAmount: num(total?.vProd),
+        freightAmount: num(total?.vFrete),
+        insuranceAmount: num(total?.vSeg),
+        otherExpensesAmount: num(total?.vOutro),
+        discountAmount: num(total?.vDesc),
+
+        carrierId: null,
+        carrierVehicleId: null,
+        freightMode,
+        carrierNameXml,
+        carrierDocumentXml,
+        carrierIeXml,
+
+        allocationMethod: "VALUE",
+        costPolicy: "LANDED_LAST_COST",
+        pricePolicy: "NONE",
+        markupPercent: null,
+        marginPercent: null,
+
+        purchaseOrderId: null,
+
+        fileName,
+        xmlContent,
+        matchSummary,
+        status,
+
+        items,
+        installments,
     });
-  }
 
-  const rawIssueDate = getText(ide?.dhEmi) || getText(ide?.dEmi);
-  const normalizedIssueDate = rawIssueDate ? new Date(rawIssueDate) : null;
+    await importRepo.recalcImportTotals(companyId, importId, true);
+    await importRepo.recalculateImportItemAllocations(companyId, importId);
 
-  if (
-    rawIssueDate &&
-    (!normalizedIssueDate || Number.isNaN(normalizedIssueDate.getTime()))
-  ) {
-    throw makeValidationError(
-      "Data de emissão inválida no XML.",
-      "PURCHASE_ENTRY_XML_ISSUE_DATE_INVALID",
-    );
-  }
-
-  const installments =
-    dups.length > 0
-      ? dups.map((dup: any, index: number) => ({
-          lineNo: index + 1,
-          installmentNumber: getText(dup?.nDup),
-          dueDate: getText(dup?.dVenc),
-          amount: toNumber(dup?.vDup),
-        }))
-      : [
-          {
-            lineNo: 1,
-            installmentNumber: "001",
-            dueDate: normalizedIssueDate
-              ? normalizedIssueDate.toISOString().slice(0, 10)
-              : null,
-            amount: toNumber(totalIcms?.vNF),
-          },
-        ];
-
-  const hasPendingHeader = !supplierId;
-
-  const status = !hasPendingHeader && pendingCount === 0 ? "READY" : "MATCH_PENDING";
-
-  const importId = await repo.createImport(companyId, {
-    accessKey,
-    invoiceNumber: getText(ide?.nNF),
-    invoiceSeries: getText(ide?.serie),
-    issueDate: normalizedIssueDate ? normalizedIssueDate.toISOString() : null,
-
-    supplierDocument,
-    supplierName: getText(emit?.xNome),
-    supplierIe: getText(emit?.IE),
-    supplierId,
-
-    supplierAddressLine1:
-      [getText(enderEmit?.xLgr), getText(enderEmit?.nro)].filter(Boolean).join(", ") ||
-      null,
-    supplierAddressLine2: getText(enderEmit?.xCpl),
-    supplierDistrict: getText(enderEmit?.xBairro),
-    supplierCity: getText(enderEmit?.xMun),
-    supplierState: getText(enderEmit?.UF),
-    supplierZipCode: getText(enderEmit?.CEP),
-    supplierCountry: getText(enderEmit?.xPais) || "BR",
-
-    chartAccountId: 5,
-    costCenterId: 9,
-    paymentTermId: installments.length > 1 ? 2 : 1,
-
-    totalAmount: toNumber(totalIcms?.vNF),
-    productsAmount: toNumber(totalIcms?.vProd),
-    freightAmount: toNumber(totalIcms?.vFrete),
-    insuranceAmount: toNumber(totalIcms?.vSeg),
-    otherExpensesAmount: toNumber(totalIcms?.vOutro),
-    discountAmount: toNumber(totalIcms?.vDesc),
-
-    carrierId: null,
-    carrierVehicleId: null,
-    freightMode: mapFreightMode(getText(transp?.modFrete)),
-    carrierNameXml: getText(transporta?.xNome),
-    carrierDocumentXml:
-      onlyDigits(getText(transporta?.CNPJ) || getText(transporta?.CPF)) || null,
-    carrierIeXml: getText(transporta?.IE),
-
-    allocationMethod: "VALUE",
-    costPolicy: "LANDED_LAST_COST",
-    pricePolicy: "NONE",
-    markupPercent: null,
-    marginPercent: null,
-
-    purchaseOrderId: null,
-
-    fileName: input.fileName,
-    xmlContent: input.xmlContent,
-    matchSummary:
-      pendingCount > 0 || !supplierId
-        ? [
-            !supplierId ? "Fornecedor pendente" : null,
-            pendingCount > 0 ? `${pendingCount} item(ns) pendente(s)` : null,
-            matchedByEanCount > 0 ? `${matchedByEanCount} por EAN` : null,
-            matchedByNameCount > 0 ? `${matchedByNameCount} por nome` : null,
-          ]
-            .filter(Boolean)
-            .join(" | ")
-        : [
-            "Pronto para confirmar",
-            matchedByEanCount > 0 ? `${matchedByEanCount} por EAN` : null,
-            matchedByNameCount > 0 ? `${matchedByNameCount} por nome` : null,
-          ]
-            .filter(Boolean)
-            .join(" | "),
-    status,
-    items,
-    installments,
-  });
-
-  return repo.getImportById(companyId, importId);
+    return importRepo.getImportById(companyId, importId);
 }
 
-export async function listImports(companyId: number, query: PurchaseEntryListQuery) {
-  return repo.listImports(companyId, query);
-}
-
-export async function getImportById(companyId: number, id: number) {
-  return repo.getImportById(companyId, id);
-}
-
-export async function getFinancialOptions(companyId: number) {
-  const [chartAccounts, costCenters, paymentTerms] = await Promise.all([
-    repo.listChartAccountsMini(companyId),
-    repo.listCostCentersMini(companyId),
-    repo.listPaymentTermsMini(companyId),
-  ]);
-
-  return {
-    chartAccounts,
-    costCenters,
-    paymentTerms,
-  };
-}
-
-async function refreshStatus(companyId: number, id: number) {
-  const counts = await repo.getImportPendingCounts(companyId, id);
-
-  if (!counts.headerReady || counts.pendingItems > 0) {
-    await repo.updateImportStatus(
-      companyId,
-      id,
-      "MATCH_PENDING",
-      !counts.headerReady
-        ? "Fornecedor pendente e/ou itens pendentes"
-        : "Itens pendentes de vínculo",
-    );
-  } else {
-    await repo.updateImportStatus(companyId, id, "READY", "Pronto para confirmar");
-  }
-}
-
-export async function updateImportFinancial(
-  companyId: number,
-  id: number,
-  input: UpdateImportFinancialInput,
+export async function listPurchaseEntryImports(
+    companyId: number,
+    query: PurchaseEntryListQuery,
 ) {
-  await repo.updateImportFinancial(companyId, id, input);
-  return repo.getImportById(companyId, id);
+    return importRepo.listImports(companyId, query);
 }
 
-export async function updateImportLogistics(
-  companyId: number,
-  id: number,
-  input: UpdateImportLogisticsInput,
-) {
-  await repo.updateImportLogistics(companyId, id, input);
-  return repo.getImportById(companyId, id);
-}
-
-export async function matchSupplier(
-  companyId: number,
-  id: number,
-  input: MatchSupplierInput,
-) {
-  await repo.updateImportSupplier(companyId, id, input.supplierId);
-  await refreshStatus(companyId, id);
-  return repo.getImportById(companyId, id);
-}
-
-export async function createSupplierFromImport(
-  companyId: number,
-  id: number,
-  input: CreateSupplierFromImportInput,
-) {
-  await repo.createSupplierFromImport(companyId, id, input);
-  await refreshStatus(companyId, id);
-  return repo.getImportById(companyId, id);
-}
-
-export async function matchProduct(
-  companyId: number,
-  id: number,
-  itemId: number,
-  input: MatchProductInput,
-) {
-  await repo.updateImportItemProduct(companyId, id, itemId, input.productId);
-  await refreshStatus(companyId, id);
-  return repo.getImportById(companyId, id);
-}
-
-export async function createProductFromImportItem(
-  companyId: number,
-  id: number,
-  itemId: number,
-  input: CreateProductFromImportItemInput,
-) {
-  await repo.createProductFromImportItem(companyId, id, itemId, input);
-  await refreshStatus(companyId, id);
-  return repo.getImportById(companyId, id);
-}
-
-export async function updateImportItem(
-  companyId: number,
-  id: number,
-  itemId: number,
-  input: UpdateImportItemInput,
-) {
-  await repo.updateImportItem(companyId, id, itemId, input);
-  return repo.getImportById(companyId, id);
-}
-
-export async function updateImportInstallment(
-  companyId: number,
-  id: number,
-  installmentId: number,
-  input: UpdateImportInstallmentInput,
-) {
-  await repo.updateImportInstallment(companyId, id, installmentId, input);
-  return repo.getImportById(companyId, id);
-}
-
-export async function confirmImport(companyId: number, userId: number, id: number) {
-  return repo.confirmImport(companyId, userId, id);
-}
-
-export async function cancelImport(companyId: number, id: number) {
-  await repo.cancelImport(companyId, id);
-  return { ok: true };
+export async function getPurchaseEntryImportById(companyId: number, id: number) {
+    return importRepo.getImportById(companyId, id);
 }
 
 export async function listSuppliersMini(companyId: number) {
-  return repo.listSuppliersMini(companyId);
+    return importRepo.listSuppliersMini(companyId);
 }
 
 export async function listProductsMini(companyId: number) {
-  return repo.listProductsMini(companyId);
+    return importRepo.listProductsMini(companyId);
 }
 
-export async function listDefinitiveEntries(
-  companyId: number,
-  query: import("./purchase_entries.schema").PurchaseEntryDefinitiveListQuery,
+export async function listChartAccountsMini(companyId: number) {
+    return importRepo.listChartAccountsMini(companyId);
+}
+
+export async function listCostCentersMini(companyId: number) {
+    return importRepo.listCostCentersMini(companyId);
+}
+
+export async function listPaymentTermsMini(companyId: number) {
+    return importRepo.listPaymentTermsMini(companyId);
+}
+
+export async function updateImportSupplier(companyId: number, id: number, supplierId: number) {
+    await importRepo.updateImportSupplier(companyId, id, supplierId);
+    return importRepo.getImportById(companyId, id);
+}
+
+export async function updateImportItemProduct(
+    companyId: number,
+    id: number,
+    itemId: number,
+    productId: number,
 ) {
-  return repo.listDefinitiveEntries(companyId, query);
+    await importRepo.updateImportItemProduct(companyId, id, itemId, productId);
+    return importRepo.getImportById(companyId, id);
 }
 
-export async function getDefinitiveEntryById(companyId: number, id: number) {
-  return repo.getDefinitiveEntryById(companyId, id);
+export async function updateImportItem(
+    companyId: number,
+    id: number,
+    itemId: number,
+    input: UpdateImportItemInput,
+) {
+    await importRepo.updateImportItem(companyId, id, itemId, input);
+    return importRepo.getImportById(companyId, id);
+}
+
+export async function updateImportInstallment(
+    companyId: number,
+    id: number,
+    installmentId: number,
+    input: UpdateImportInstallmentInput,
+) {
+    await importRepo.updateImportInstallment(companyId, id, installmentId, input);
+    return importRepo.getImportById(companyId, id);
+}
+
+export async function updateImportFinancial(
+    companyId: number,
+    id: number,
+    input: UpdateImportFinancialInput,
+) {
+    await importRepo.updateImportFinancial(companyId, id, input);
+    return importRepo.getImportById(companyId, id);
+}
+
+export async function updateImportLogistics(
+    companyId: number,
+    id: number,
+    input: UpdateImportLogisticsInput,
+) {
+    await importRepo.updateImportLogistics(companyId, id, input);
+    return importRepo.getImportById(companyId, id);
 }
 
 export async function updateImportEconomics(
-  companyId: number,
-  id: number,
-  payload: UpdateImportEconomicsInput,
+    companyId: number,
+    id: number,
+    input: UpdateImportEconomicsInput,
 ) {
-  return repo.updateImportEconomics(companyId, id, payload);
+    return importRepo.updateImportEconomics(companyId, id, input);
+}
+
+export async function updateImportItemManualAllocation(
+    companyId: number,
+    importId: number,
+    itemId: number,
+    payload: {
+        freightAllocated?: number;
+        insuranceAllocated?: number;
+        otherExpensesAllocated?: number;
+        discountAllocated?: number;
+    },
+) {
+    await importRepo.updateImportItemManualAllocation(companyId, importId, itemId, payload);
+    return importRepo.getImportById(companyId, importId);
+}
+
+export async function buildConfirmationPreview(companyId: number, importId: number) {
+    return importRepo.buildConfirmationPreview(companyId, importId);
+}
+
+export async function getImportPendingCounts(companyId: number, id: number) {
+    return importRepo.getImportPendingCounts(companyId, id);
+}
+
+export async function updateImportStatus(
+    companyId: number,
+    id: number,
+    status: PurchaseEntryImportStatus,
+    matchSummary?: string | null,
+) {
+    await importRepo.updateImportStatus(companyId, id, status, matchSummary);
+    return importRepo.getImportById(companyId, id);
+}
+
+export async function cancelImport(companyId: number, id: number) {
+    await importRepo.cancelImport(companyId, id);
+    return { success: true };
+}
+
+export async function createSupplierFromImport(
+    companyId: number,
+    importId: number,
+    input?: CreateSupplierFromImportInput,
+) {
+    const supplierId = await importRepo.createSupplierFromImport(companyId, importId, input);
+    return {
+        supplierId,
+        import: await importRepo.getImportById(companyId, importId),
+    };
+}
+
+export async function createProductFromImportItem(
+    companyId: number,
+    importId: number,
+    itemId: number,
+    input?: CreateProductFromImportItemInput,
+) {
+    const productId = await importRepo.createProductFromImportItem(companyId, importId, itemId, input);
+    return {
+        productId,
+        import: await importRepo.getImportById(companyId, importId),
+    };
+}
+
+export async function confirmImport(companyId: number, userId: number, id: number) {
+    return importRepo.confirmImport(companyId, userId, id);
+}
+
+export async function listDefinitiveEntries(
+    companyId: number,
+    query: PurchaseEntryDefinitiveListQuery,
+) {
+    return definitiveRepo.listDefinitiveEntries(companyId, query);
+}
+
+export async function getDefinitiveEntryById(companyId: number, id: number) {
+    return definitiveRepo.getDefinitiveEntryById(companyId, id);
+}
+
+export const listImports = listPurchaseEntryImports;
+export const getImportById = getPurchaseEntryImportById;
+export const getDefinitiveById = getDefinitiveEntryById;
+export async function importXml(
+    companyId: number,
+    xmlContentOrUserId: string | number,
+    maybeXmlContentOrFileName?: string,
+    maybeFileName?: string,
+) {
+    // Compatibilidade com controller antigo:
+    // importXml(companyId, xmlContent, fileName)
+    if (typeof xmlContentOrUserId === "string") {
+        return importPurchaseEntryXml(
+            companyId,
+            xmlContentOrUserId,
+            maybeXmlContentOrFileName ?? "import.xml",
+        );
+    }
+
+    // Compatibilidade com controller antigo:
+    // importXml(companyId, userId, xmlContent, fileName)
+    return importPurchaseEntryXml(
+        companyId,
+        maybeXmlContentOrFileName ?? "",
+        maybeFileName ?? "import.xml",
+    );
+}
+
+export async function matchSupplier(
+    companyId: number,
+    importId: number,
+    input: number | { supplierId: number },
+) {
+    const supplierId = typeof input === "number" ? input : Number(input?.supplierId);
+
+    await updateImportSupplier(companyId, importId, supplierId);
+    return getPurchaseEntryImportById(companyId, importId);
+}
+
+export async function matchProduct(
+    companyId: number,
+    importId: number,
+    itemId: number,
+    input: number | { productId: number },
+) {
+    const productId = typeof input === "number" ? input : Number(input?.productId);
+
+    await updateImportItemProduct(companyId, importId, itemId, productId);
+    return getPurchaseEntryImportById(companyId, importId);
 }
 
 export async function previewConfirmation(companyId: number, importId: number) {
-  return repo.buildConfirmationPreview(companyId, importId);
+    return buildConfirmationPreview(companyId, importId);
 }
 
 export async function updateImportItemAllocation(
-  companyId: number,
-  importId: number,
-  itemId: number,
-  payload: UpdateImportItemAllocationInput,
+    companyId: number,
+    importId: number,
+    itemId: number,
+    payload: {
+        freightAllocated?: number;
+        insuranceAllocated?: number;
+        otherExpensesAllocated?: number;
+        discountAllocated?: number;
+    },
 ) {
-  return repo.updateImportItemManualAllocation(
-    companyId,
-    importId,
-    itemId,
-    payload,
-  );
+    await updateImportItemManualAllocation(companyId, importId, itemId, payload);
+    return getPurchaseEntryImportById(companyId, importId);
 }
+
+export async function getFinancialOptions(companyId: number) {
+    const [chartAccounts, costCenters, paymentTerms] = await Promise.all([
+        listChartAccountsMini(companyId),
+        listCostCentersMini(companyId),
+        listPaymentTermsMini(companyId),
+    ]);
+
+    return {
+        chartAccounts,
+        costCenters,
+        paymentTerms,
+    };
+}
+

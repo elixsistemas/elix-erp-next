@@ -162,13 +162,13 @@ export async function purchaseEntriesRoutes(app: FastifyInstance) {
 
             app.post(
                 "/:id/preview-confirmation",
-                { preHandler: [requireAuth] },
+                { preHandler: [requireAuth, requirePermission("purchase_entries.read")] },
                 controller.previewConfirmation
             );
 
             app.put(
                 "/:id/items/:itemId/allocation",
-                { preHandler: [requireAuth] },
+                { preHandler: [requireAuth, requirePermission("purchase_entries.update")] },
                 controller.updateImportItemAllocation
             );
             

@@ -454,44 +454,29 @@ Evolução:
 
 Muito comum em ERPs maduros.
 
-[x] entradas por XML com staging
-  [x] staging de cabeçalho
-  [x] staging de itens
-  [x] staging de parcelas
-  [x] importação XML
-  [x] detecção de duplicidade por chave de acesso
-  [x] validação de pertencimento do XML à empresa
-  [x] revisão de vínculos fornecedor
-  [x] revisão de vínculos produto
-  [x] criação assistida de fornecedor
-  [x] criação assistida de produto
-  [x] edição de itens
-  [x] edição de parcelas
-  [x] edição de dados financeiros
-  [x] edição logística
-  [x] motor econômico no staging
-  [x] edição de política de custo
-  [x] edição de política de preço
-  [x] edição de rateio
-  [x] preview antes da confirmação
-  [x] simulação de preço antes da confirmação
-  [x] rateio manual por item
-  [x] confirmação da importação
-  [x] criação da entrada definitiva
-  [x] criação dos itens definitivos
-  [x] criação das parcelas definitivas
-  [x] integração de contas a pagar
-  [x] integração de estoque
-  [x] atualização de custo do produto
-  [x] aplicação de política de preço no produto
-  [x] listagem de entradas definitivas
-  [x] detalhe da entrada definitiva
-  [x] resumo econômico pós-confirmação
-
-[ ] solicitações de compra
-[ ] cotações
-[ ] pedidos de compra
-[ ] entrada manual
+* [x] entradas por XML com staging
+  * [x] staging de cabeçalho
+  * [x] staging de itens
+  * [x] staging de parcelas
+  * [x] importação XML
+  * [x] detecção de duplicidade por chave
+  * [x] validação de pertencimento do XML à empresa
+  * [x] revisão de vínculos
+  * [x] criação assistida de fornecedor
+  * [x] criação assistida de produto
+  * [x] classificação financeira
+  * [x] logística da entrada
+  * [x] motor econômico
+  * [x] preview de confirmação
+  * [x] confirmação
+  * [x] integração estoque
+  * [x] integração contas a pagar
+  * [x] materialização da entrada definitiva
+  * [x] atualização de custo/preço
+* [ ] solicitações de compra
+* [ ] cotações
+* [ ] pedidos de compra
+* [ ] entrada manual de estoque
 
 ## Pendências / evoluções do módulo de entradas XML
 

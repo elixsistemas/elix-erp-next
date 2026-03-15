@@ -4,11 +4,13 @@ import { Button } from "@/components/ui/button";
 import { getAccountsPayableById, updateAccountsPayableStatus } from "./accounts-payable.service";
 import type { AccountsPayableRow, AccountsPayableStatus } from "./accounts-payable.types";
 
-function money(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
+function money(value: number | null | undefined) {
+  if (value == null) return "—";
+
+  return value.toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
-  }).format(value);
+  });
 }
 
 export default function AccountsPayableDetailsPage() {

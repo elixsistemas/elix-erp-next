@@ -1,13 +1,29 @@
 import type { Transaction } from "mssql";
-import { createHash } from "node:crypto";
 import sql from "mssql";
 import { getPool } from "../../config/db";
+import {
+    clean,
+    hashXml,
+    normalizeCountry,
+    onlyDigits,
+    round2,
+    round6,
+} from "./purchase_entries.helpers";
+import {
+    applyProductEconomicsCore,
+    insertProductCostPriceHistory,
+    resolveFiscalUomId,
+    validateImportAllocationTotals,
+    validateImportInstallmentsTotal,
+} from "./purchase_entries.economics";
+import { getDefinitivePurchaseEntryIdByImportId } from "./purchase_entries.definitive.repository";
 import type {
     CreateProductFromImportItemInput,
     CreateSupplierFromImportInput,
     PurchaseEntryImportStatus,
     PurchaseEntryItemMatchStatus,
     PurchaseEntryListQuery,
+    UpdateImportEconomicsInput,
     UpdateImportFinancialInput,
     UpdateImportInstallmentInput,
     UpdateImportItemInput,
@@ -233,29 +249,6 @@ type SqlExecutor = {
     request: Transaction["request"];
 };
 
-function onlyDigits(value: string | null | undefined) {
-    return (value ?? "").replace(/\D/g, "");
-}
-
-function clean(value: string | null | undefined, maxChars: number) {
-    const v = (value ?? "").trim();
-    if (!v) return null;
-    return v.slice(0, maxChars);
-}
-
-function normalizeCountry(value: string | null | undefined) {
-    const raw = (value ?? "").trim().toUpperCase();
-    if (!raw) return "BR";
-    if (raw === "BR" || raw === "BRA" || raw === "BRASIL" || raw === "BRAZIL") {
-        return "BR";
-    }
-    return raw.slice(0, 2);
-}
-
-export function hashXml(xmlContent: string) {
-    return createHash("sha256").update(xmlContent, "utf8").digest("hex");
-}
-
 export async function listChartAccountsMini(companyId: number): Promise<MiniOption[]> {
     const pool = await getPool();
     const result = await pool
@@ -311,8 +304,7 @@ export async function getCompanyDocument(companyId: number): Promise<string | nu
         .request()
         .input("company_id", companyId)
         .query<{ cnpj: string | null }>(`
-      SELECT TOP 1
-        cnpj
+      SELECT TOP 1 cnpj
       FROM dbo.companies
       WHERE id = @company_id
         AND deleted_at IS NULL
@@ -689,14 +681,17 @@ export async function createImport(companyId: number, data: ParsedImportData) {
 export async function listImports(companyId: number, query: PurchaseEntryListQuery) {
     const pool = await getPool();
 
+    const limit = Number(query.limit ?? 50);
+    const offset = Number(query.offset ?? 0);
+
     const result = await pool
         .request()
         .input("company_id", companyId)
         .input("status", query.status ?? null)
         .input("supplier_id", query.supplierId ?? null)
         .input("q", query.q ? `%${query.q}%` : null)
-        .input("limit", query.limit)
-        .input("offset", query.offset)
+        .input("limit", limit)
+        .input("offset", offset)
         .query<PurchaseEntryImportRow>(`
       SELECT
         id,
@@ -953,7 +948,7 @@ async function getImportByIdTx(
 export async function updateImportEconomics(
     companyId: number,
     id: number,
-    payload: import("./purchase_entries.schema").UpdateImportEconomicsInput,
+    payload: UpdateImportEconomicsInput,
 ) {
     const pool = await getPool();
     const tx = pool.transaction();
@@ -997,31 +992,21 @@ export async function updateImportEconomics(
             throw new Error("Não é possível alterar o motor econômico após confirmação/cancelamento.");
         }
 
-        const nextAllocationMethod =
-            payload.allocationMethod ?? current.allocation_method;
-        const nextCostPolicy =
-            payload.costPolicy ?? current.cost_policy;
-        const nextPricePolicy =
-            payload.pricePolicy ?? current.price_policy;
+        const nextAllocationMethod = payload.allocationMethod ?? current.allocation_method;
+        const nextCostPolicy = payload.costPolicy ?? current.cost_policy;
+        const nextPricePolicy = payload.pricePolicy ?? current.price_policy;
 
         const nextMarkupPercent =
-            payload.markupPercent !== undefined
-                ? payload.markupPercent
-                : current.markup_percent;
+            payload.markupPercent !== undefined ? payload.markupPercent : current.markup_percent;
 
         const nextMarginPercent =
-            payload.marginPercent !== undefined
-                ? payload.marginPercent
-                : current.margin_percent;
+            payload.marginPercent !== undefined ? payload.marginPercent : current.margin_percent;
 
         if (nextMarkupPercent != null && nextMarkupPercent < 0) {
             throw new Error("Markup não pode ser negativo.");
         }
 
-        if (
-            nextMarginPercent != null &&
-            (nextMarginPercent <= 0 || nextMarginPercent >= 100)
-        ) {
+        if (nextMarginPercent != null && (nextMarginPercent <= 0 || nextMarginPercent >= 100)) {
             throw new Error("Margem deve estar entre 0 e 100.");
         }
 
@@ -1076,9 +1061,9 @@ export async function updateImportFinancial(
         .query(`
       UPDATE dbo.purchase_entry_imports
       SET
-        chart_account_id = @chart_account_id,
-        cost_center_id = @cost_center_id,
-        payment_term_id = @payment_term_id,
+        chart_account_id = COALESCE(@chart_account_id, chart_account_id),
+        cost_center_id = COALESCE(@cost_center_id, cost_center_id),
+        payment_term_id = COALESCE(@payment_term_id, payment_term_id),
         updated_at = SYSUTCDATETIME()
       WHERE company_id = @company_id
         AND id = @id
@@ -1292,9 +1277,7 @@ async function recalcImportTotalsCore(
 
     const freightAmount = Number(headerResult.recordset[0]?.freight_amount ?? 0);
     const insuranceAmount = Number(headerResult.recordset[0]?.insurance_amount ?? 0);
-    const otherExpensesAmount = Number(
-        headerResult.recordset[0]?.other_expenses_amount ?? 0,
-    );
+    const otherExpensesAmount = Number(headerResult.recordset[0]?.other_expenses_amount ?? 0);
     const discountAmount = Number(headerResult.recordset[0]?.discount_amount ?? 0);
 
     const totalAmount = Number(
@@ -1506,10 +1489,7 @@ async function recalculateImportItemAllocationsCore(
 
         const freightAllocated = alloc(Number(header.freight_amount ?? 0), base);
         const insuranceAllocated = alloc(Number(header.insurance_amount ?? 0), base);
-        const otherExpensesAllocated = alloc(
-            Number(header.other_expenses_amount ?? 0),
-            base,
-        );
+        const otherExpensesAllocated = alloc(Number(header.other_expenses_amount ?? 0), base);
         const discountAllocated = alloc(Number(header.discount_amount ?? 0), base);
 
         const landedTotalCost = Number(
@@ -1553,10 +1533,7 @@ async function recalculateImportItemAllocationsCore(
     }
 }
 
-export async function recalculateImportItemAllocations(
-    companyId: number,
-    id: number,
-) {
+export async function recalculateImportItemAllocations(companyId: number, id: number) {
     const pool = await getPool();
     await recalculateImportItemAllocationsCore(pool, companyId, id);
 }
@@ -1888,27 +1865,13 @@ export async function createProductFromImportItem(
             : null;
 
     if (existingByEan?.recordset[0]?.id) {
-        await updateImportItemProduct(
-            companyId,
-            importId,
-            itemId,
-            existingByEan.recordset[0].id,
-        );
+        await updateImportItemProduct(companyId, importId, itemId, existingByEan.recordset[0].id);
         return existingByEan.recordset[0].id;
     }
 
-    const uomIdResult = await pool
-        .request()
-        .query<{ id: number }>(`
-      SELECT TOP 1 id
-      FROM dbo.fiscal_uom
-      WHERE code = 'UN' OR code = 'un'
-      ORDER BY id
-    `);
-
-    const uomId = Number(uomIdResult.recordset[0]?.id ?? 0);
+    const uomId = await resolveFiscalUomId(pool, item.uom ?? null);
     if (!uomId) {
-        throw new Error("UOM padrão 'UN' não encontrada.");
+        throw new Error("Nenhuma UOM fiscal ativa encontrada para o produto.");
     }
 
     const kind = input?.kind ?? "product";
@@ -2001,134 +1964,6 @@ export async function createProductFromImportItem(
     return productId;
 }
 
-function round2(value: number) {
-    return Number(value.toFixed(2));
-}
-
-function round6(value: number) {
-    return Number(value.toFixed(6));
-}
-
-function calcSuggestedPrice(params: {
-    landedUnitCost: number;
-    pricePolicy: "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
-    markupPercent: number | null;
-    marginPercent: number | null;
-    currentPrice: number;
-}) {
-    const { landedUnitCost, pricePolicy, markupPercent, marginPercent, currentPrice } = params;
-
-    if (pricePolicy === "NONE") {
-        return {
-            suggestedPrice: currentPrice,
-            appliedPrice: currentPrice,
-            changed: false,
-        };
-    }
-
-    if (pricePolicy === "MARKUP") {
-        const pct = Number(markupPercent ?? 0);
-        const suggested = round2(landedUnitCost * (1 + pct / 100));
-        return {
-            suggestedPrice: suggested,
-            appliedPrice: suggested,
-            changed: true,
-        };
-    }
-
-    if (pricePolicy === "MARGIN") {
-        const pct = Number(marginPercent ?? 0);
-        const divisor = 1 - pct / 100;
-        const suggested = divisor > 0 ? round2(landedUnitCost / divisor) : currentPrice;
-        return {
-            suggestedPrice: suggested,
-            appliedPrice: suggested,
-            changed: divisor > 0,
-        };
-    }
-
-    return {
-        suggestedPrice: round2(landedUnitCost),
-        appliedPrice: currentPrice,
-        changed: false,
-    };
-}
-
-async function updateProductEconomicsCore(
-    tx: Transaction,
-    companyId: number,
-    productId: number,
-    params: {
-        landedUnitCost: number;
-        costPolicy: "LAST_COST" | "AVERAGE_COST" | "LANDED_LAST_COST";
-        pricePolicy: "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
-        markupPercent: number | null;
-        marginPercent: number | null;
-    },
-) {
-    const currentResult = await tx
-        .request()
-        .input("company_id", companyId)
-        .input("product_id", productId)
-        .query<{ cost: number; price: number }>(`
-      SELECT TOP 1 cost, price
-      FROM dbo.products
-      WHERE company_id = @company_id
-        AND id = @product_id
-    `);
-
-    const current = currentResult.recordset[0];
-
-    if (!current) {
-        throw new Error(`Produto ${productId} não encontrado para atualização econômica.`);
-    }
-
-    let nextCost = Number(current.cost ?? 0);
-
-    if (params.costPolicy === "LANDED_LAST_COST" || params.costPolicy === "LAST_COST") {
-        nextCost = round2(params.landedUnitCost);
-    } else if (params.costPolicy === "AVERAGE_COST") {
-        const currentCost = Number(current.cost ?? 0);
-        nextCost =
-            currentCost > 0
-                ? round2((currentCost + Number(params.landedUnitCost)) / 2)
-                : round2(params.landedUnitCost);
-    }
-
-    const pricing = calcSuggestedPrice({
-        landedUnitCost: nextCost,
-        pricePolicy: params.pricePolicy,
-        markupPercent: params.markupPercent,
-        marginPercent: params.marginPercent,
-        currentPrice: Number(current.price ?? 0),
-    });
-
-    await tx
-        .request()
-        .input("company_id", companyId)
-        .input("product_id", productId)
-        .input("cost", nextCost)
-        .input("price", pricing.appliedPrice)
-        .query(`
-      UPDATE dbo.products
-      SET
-        cost = @cost,
-        price = @price,
-        updated_at = SYSUTCDATETIME()
-      WHERE company_id = @company_id
-        AND id = @product_id
-    `);
-
-    return {
-        previousCost: Number(current.cost ?? 0),
-        previousPrice: Number(current.price ?? 0),
-        newCost: nextCost,
-        suggestedPrice: pricing.suggestedPrice,
-        appliedPrice: pricing.appliedPrice,
-        priceChanged: pricing.changed,
-    };
-}
-
 async function createInventoryMovementCore(
     tx: Transaction,
     companyId: number,
@@ -2139,6 +1974,8 @@ async function createInventoryMovementCore(
         purchaseEntryItemId: number;
         occurredAt: string | null;
         note: string | null;
+        unitCost: number | null;
+        totalCost: number | null;
     },
 ) {
     await tx
@@ -2157,6 +1994,8 @@ async function createInventoryMovementCore(
             `purchase_entry:${params.purchaseEntryId}:item:${params.purchaseEntryItemId}`,
         )
         .input("occurred_at", params.occurredAt ?? null)
+        .input("unit_cost", params.unitCost ?? null)
+        .input("total_cost", params.totalCost ?? null)
         .execute("dbo.sp_inventory_move");
 }
 
@@ -2287,6 +2126,7 @@ export async function materializePurchaseEntry(
         product_id: number;
         quantity: number;
         landed_unit_cost: number;
+        landed_total_cost: number;
     }> = [];
 
     for (const item of items) {
@@ -2375,11 +2215,20 @@ export async function materializePurchaseEntry(
             product_id: Number(item.product_id),
             quantity: Number(item.quantity),
             landed_unit_cost: Number(item.landed_unit_cost ?? 0),
+            landed_total_cost: Number(item.landed_total_cost ?? 0),
         });
     }
 
+    const insertedInstallments: Array<{
+        id: number;
+        source_import_installment_id: number | null;
+        installment_no: number;
+        due_date: string;
+        amount: number;
+    }> = [];
+
     for (const inst of installments) {
-        await tx
+        const installmentResult = await tx
             .request()
             .input("purchase_entry_id", purchaseEntryId)
             .input("company_id", companyId)
@@ -2389,7 +2238,7 @@ export async function materializePurchaseEntry(
             .input("amount", inst.amount)
             .input("payment_method_id", null)
             .input("account_payable_id", inst.accounts_payable_id ?? null)
-            .query(`
+            .query<{ id: number }>(`
         INSERT INTO dbo.purchase_entry_installments (
           purchase_entry_id,
           company_id,
@@ -2401,6 +2250,7 @@ export async function materializePurchaseEntry(
           account_payable_id,
           created_at
         )
+        OUTPUT INSERTED.id
         VALUES (
           @purchase_entry_id,
           @company_id,
@@ -2413,11 +2263,239 @@ export async function materializePurchaseEntry(
           SYSUTCDATETIME()
         )
       `);
+
+        insertedInstallments.push({
+            id: Number(installmentResult.recordset[0].id),
+            source_import_installment_id: inst.id ?? null,
+            installment_no: Number(inst.line_no),
+            due_date: String(inst.due_date),
+            amount: Number(inst.amount),
+        });
     }
 
     return {
         purchaseEntryId,
         insertedItems,
+        insertedInstallments,
+    };
+}
+
+function toSqlDate(value: unknown): Date {
+    const dateOnly = toDateOnly(value);
+    const parsed = new Date(`${dateOnly}T00:00:00`);
+
+    if (Number.isNaN(parsed.getTime())) {
+        throw new Error(`Data inválida para conversão SQL: ${String(value)}`);
+    }
+
+    return parsed;
+}
+
+function toDateOnly(value: unknown): string {
+    if (!value) {
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    if (value instanceof Date) {
+        return value.toISOString().slice(0, 10);
+    }
+
+    const raw = String(value).trim();
+    if (!raw) {
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    if (raw.length >= 10 && /^\d{4}-\d{2}-\d{2}/.test(raw)) {
+        return raw.slice(0, 10);
+    }
+
+    const parsed = new Date(raw);
+    if (Number.isNaN(parsed.getTime())) {
+        return new Date().toISOString().slice(0, 10);
+    }
+
+    return parsed.toISOString().slice(0, 10);
+}
+
+async function createAccountsPayableFromPurchaseEntryCore(
+    tx: Transaction,
+    companyId: number,
+    params: {
+        header: PurchaseEntryImportRow;
+        purchaseEntryId: number;
+        importInstallments: PurchaseEntryImportInstallmentRow[];
+        entryInstallments: Array<{
+            id: number;
+            source_import_installment_id: number | null;
+            installment_no: number;
+            due_date: string;
+            amount: number;
+        }>;
+    },
+) {
+    const { header, purchaseEntryId, importInstallments, entryInstallments } = params;
+
+    if (!header.supplier_id) {
+        throw new Error("Fornecedor não vinculado para geração do contas a pagar.");
+    }
+
+    if (!importInstallments.length || !entryInstallments.length) {
+        throw new Error("Não há parcelas para gerar contas a pagar.");
+    }
+
+    const issueDate = toSqlDate(header.issue_date);
+
+    const installmentCount = entryInstallments.length;
+    const createdAccountsPayableIds: number[] = [];
+
+    for (const inst of entryInstallments) {
+        const importInst = importInstallments.find(
+            (x) => Number(x.id) === Number(inst.source_import_installment_id),
+        );
+
+        const installmentNo =
+            Number(inst.installment_no ?? 0) ||
+            Number(importInst?.line_no ?? 0) ||
+            1;
+
+        const documentNumber = [header.invoice_number, header.invoice_series]
+            .filter(Boolean)
+            .join("/");
+
+        const descriptionBase = documentNumber
+            ? `NF-e de entrada ${documentNumber}`
+            : `NF-e de entrada importação #${header.id}`;
+
+        const description =
+            installmentCount > 1
+                ? `${descriptionBase} - parcela ${String(installmentNo).padStart(3, "0")}`
+                : descriptionBase;
+
+        const apResult = await tx
+            .request()
+            .input("company_id", companyId)
+            .input("supplier_id", header.supplier_id)
+            .input("document_number", documentNumber || null)
+            .input("issue_date", sql.Date, issueDate)
+            .input("due_date", sql.Date, toSqlDate(inst.due_date))
+            .input("competence_date", sql.Date, issueDate)
+            .input("description", description)
+            .input("amount", Number(inst.amount))
+            .input("open_amount", Number(inst.amount))
+            .input("status", "OPEN")
+            .input("payment_term_id", header.payment_term_id ?? null)
+            .input("payment_method_id", null)
+            .input("bank_account_id", null)
+            .input("chart_account_id", header.chart_account_id ?? null)
+            .input("cost_center_id", header.cost_center_id ?? null)
+            .input("source_type", "PURCHASE_ENTRY")
+            .input("source_id", purchaseEntryId)
+            .input("installment_no", installmentNo)
+            .input("installment_count", installmentCount)
+            .input(
+                "notes",
+                `Gerado automaticamente pela confirmação da importação XML #${header.id}`,
+            )
+            .query<{ id: number }>(`
+        INSERT INTO dbo.accounts_payable (
+          company_id,
+          supplier_id,
+          document_number,
+          issue_date,
+          due_date,
+          competence_date,
+          description,
+          amount,
+          open_amount,
+          status,
+          payment_term_id,
+          payment_method_id,
+          bank_account_id,
+          chart_account_id,
+          cost_center_id,
+          source_type,
+          source_id,
+          installment_no,
+          installment_count,
+          notes
+        )
+        OUTPUT INSERTED.id
+        VALUES (
+          @company_id,
+          @supplier_id,
+          @document_number,
+          @issue_date,
+          @due_date,
+          @competence_date,
+          @description,
+          @amount,
+          @open_amount,
+          @status,
+          @payment_term_id,
+          @payment_method_id,
+          @bank_account_id,
+          @chart_account_id,
+          @cost_center_id,
+          @source_type,
+          @source_id,
+          @installment_no,
+          @installment_count,
+          @notes
+        )
+      `);
+
+        const accountsPayableId = Number(apResult.recordset[0].id);
+        createdAccountsPayableIds.push(accountsPayableId);
+
+        await tx
+            .request()
+            .input("company_id", companyId)
+            .input("import_installment_id", inst.source_import_installment_id)
+            .input("entry_installment_id", inst.id)
+            .input("accounts_payable_id", accountsPayableId)
+            .query(`
+        UPDATE dbo.purchase_entry_import_installments
+        SET
+          accounts_payable_id = @accounts_payable_id,
+          updated_at = SYSUTCDATETIME()
+        WHERE company_id = @company_id
+          AND id = @import_installment_id;
+
+        UPDATE dbo.purchase_entry_installments
+        SET
+          account_payable_id = @accounts_payable_id
+        WHERE company_id = @company_id
+          AND id = @entry_installment_id;
+      `);
+    }
+
+    const anchorAccountsPayableId = createdAccountsPayableIds[0] ?? null;
+
+    await tx
+        .request()
+        .input("company_id", companyId)
+        .input("import_id", header.id)
+        .input("purchase_entry_id", purchaseEntryId)
+        .input("accounts_payable_id", anchorAccountsPayableId)
+        .query(`
+      UPDATE dbo.purchase_entry_imports
+      SET
+        accounts_payable_id = @accounts_payable_id,
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND id = @import_id;
+
+      UPDATE dbo.purchase_entries
+      SET
+        accounts_payable_id = @accounts_payable_id,
+        updated_at = SYSUTCDATETIME()
+      WHERE company_id = @company_id
+        AND id = @purchase_entry_id;
+    `);
+
+    return {
+        accountsPayableId: anchorAccountsPayableId,
+        accountsPayableIds: createdAccountsPayableIds,
     };
 }
 
@@ -2449,8 +2527,13 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
 
         const { header, items, installments } = details;
 
-        if (header.price_policy === "MARKUP" && (header.markup_percent == null || Number(header.markup_percent) < 0)) {
-            throw new Error("A política MARKUP exige um percentual de markup válido antes da confirmação.");
+        if (
+            header.price_policy === "MARKUP" &&
+            (header.markup_percent == null || Number(header.markup_percent) < 0)
+        ) {
+            throw new Error(
+                "A política MARKUP exige um percentual de markup válido antes da confirmação.",
+            );
         }
 
         if (
@@ -2461,7 +2544,9 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
                 Number(header.margin_percent) >= 100
             )
         ) {
-            throw new Error("A política MARGIN exige um percentual de margem válido antes da confirmação.");
+            throw new Error(
+                "A política MARGIN exige um percentual de margem válido antes da confirmação.",
+            );
         }
 
         if (!header.supplier_id) {
@@ -2470,25 +2555,22 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
 
         const unresolvedItem = items.find((item) => !item.product_id);
         if (unresolvedItem) {
-            throw new Error(
-                `O item da linha ${unresolvedItem.line_no} ainda não possui produto vinculado.`,
-            );
+            throw new Error(`O item da linha ${unresolvedItem.line_no} ainda não possui produto vinculado.`);
         }
 
         const invalidMatch = items.find(
             (item) => item.match_status && !["MATCHED", "NEW_PRODUCT"].includes(item.match_status),
         );
         if (invalidMatch) {
-            throw new Error(
-                `O item da linha ${invalidMatch.line_no} ainda está pendente de revisão.`,
-            );
+            throw new Error(`O item da linha ${invalidMatch.line_no} ainda está pendente de revisão.`);
         }
 
         if (header.carrier_vehicle_id && !header.carrier_id) {
-            throw new Error(
-                "Veículo de transportadora informado sem transportadora vinculada.",
-            );
+            throw new Error("Veículo de transportadora informado sem transportadora vinculada.");
         }
+
+        await validateImportAllocationTotals(tx, companyId, id);
+        await validateImportInstallmentsTotal(tx, companyId, id);
 
         const materialized = await materializePurchaseEntry(
             tx,
@@ -2497,6 +2579,17 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
             header,
             items,
             installments,
+        );
+
+        const accountsPayableResult = await createAccountsPayableFromPurchaseEntryCore(
+            tx,
+            companyId,
+            {
+                header,
+                purchaseEntryId: materialized.purchaseEntryId,
+                importInstallments: installments,
+                entryInstallments: materialized.insertedInstallments,
+            },
         );
 
         const productsInfoResult = await tx
@@ -2512,9 +2605,7 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
         WHERE company_id = @company_id
       `);
 
-        const productMap = new Map(
-            productsInfoResult.recordset.map((p) => [Number(p.id), p]),
-        );
+        const productMap = new Map(productsInfoResult.recordset.map((p) => [Number(p.id), p]));
 
         const economicsSummary: Array<{
             purchaseEntryItemId: number;
@@ -2524,46 +2615,71 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
             previousCost: number;
             newCost: number;
             previousPrice: number;
-            suggestedPrice: number;
+            suggestedPrice: number | null;
             appliedPrice: number;
             priceChanged: boolean;
             movedToStock: boolean;
+            currentMarginPercent: number;
+            projectedMarginPercent: number;
         }> = [];
 
         for (let idx = 0; idx < items.length; idx++) {
             const importItem = items[idx];
             const entryItem = materialized.insertedItems[idx];
-            const productId = Number(importItem.product_id);
 
-            const economics = await updateProductEconomicsCore(tx, companyId, productId, {
-                landedUnitCost: Number(importItem.landed_unit_cost ?? 0),
+            const productId = Number(importItem.product_id);
+            const quantity = Number(importItem.quantity ?? 0);
+            const landedUnitCost = Number(importItem.landed_unit_cost ?? 0);
+            const landedTotalCost = Number(importItem.landed_total_cost ?? 0);
+
+            const economics = await applyProductEconomicsCore(tx, companyId, productId, {
+                quantity,
+                landedUnitCost,
                 costPolicy: header.cost_policy,
                 pricePolicy: header.price_policy,
-                markupPercent: header.markup_percent ?? null,
-                marginPercent: header.margin_percent ?? null,
+                markupPercent: header.markup_percent != null ? Number(header.markup_percent) : null,
+                marginPercent: header.margin_percent != null ? Number(header.margin_percent) : null,
             });
 
             const productInfo = productMap.get(productId);
-
             const shouldMoveToStock =
-                !!productInfo?.track_inventory && String(productInfo.kind).toLowerCase() !== "service";
+                !!productInfo?.track_inventory && String(productInfo.kind).toUpperCase() !== "SERVICE";
 
             if (shouldMoveToStock) {
                 await createInventoryMovementCore(tx, companyId, {
                     productId,
-                    quantity: Number(importItem.quantity),
+                    quantity,
                     purchaseEntryId: materialized.purchaseEntryId,
                     purchaseEntryItemId: entryItem.id,
                     occurredAt: header.issue_date ?? null,
-                    note: `Entrada de compra XML #${header.id}`,
+                    note: `Entrada NF ${header.invoice_number ?? ""}/${header.invoice_series ?? ""}`.trim(),
+                    unitCost: landedUnitCost,
+                    totalCost: landedTotalCost,
                 });
             }
+
+            await insertProductCostPriceHistory(tx, companyId, {
+                productId,
+                purchaseEntryId: materialized.purchaseEntryId,
+                purchaseEntryItemId: entryItem.id,
+                originType: "PURCHASE_ENTRY",
+                originId: materialized.purchaseEntryId,
+                previousCost: economics.previousCost,
+                newCost: economics.newCost,
+                previousPrice: economics.previousPrice,
+                newPrice: economics.appliedPrice,
+                costPolicy: header.cost_policy,
+                pricePolicy: header.price_policy,
+                markupPercent: header.markup_percent != null ? Number(header.markup_percent) : null,
+                marginPercent: header.margin_percent != null ? Number(header.margin_percent) : null,
+                userId,
+            });
 
             economicsSummary.push({
                 purchaseEntryItemId: entryItem.id,
                 productId,
-                quantity: Number(importItem.quantity),
-                landedUnitCost: Number(importItem.landed_unit_cost ?? 0),
+                quantity,
+                landedUnitCost,
                 previousCost: economics.previousCost,
                 newCost: economics.newCost,
                 previousPrice: economics.previousPrice,
@@ -2571,6 +2687,8 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
                 appliedPrice: economics.appliedPrice,
                 priceChanged: economics.priceChanged,
                 movedToStock: shouldMoveToStock,
+                currentMarginPercent: economics.currentMarginPercent,
+                projectedMarginPercent: economics.projectedMarginPercent,
             });
         }
 
@@ -2595,7 +2713,7 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
         await tx.commit();
 
         return {
-            accountsPayableId: header.accounts_payable_id ?? null,
+            accountsPayableId: accountsPayableResult.accountsPayableId ?? null,
             purchaseEntryId: materialized.purchaseEntryId,
             economics: economicsSummary,
         };
@@ -2608,10 +2726,7 @@ export async function confirmImport(companyId: number, userId: number, id: numbe
 
         console.error("confirmImport error:", {
             message: err?.message,
-            originalMessage:
-                err?.originalError?.info?.message ||
-                err?.originalError?.message ||
-                null,
+            originalMessage: err?.originalError?.info?.message || err?.originalError?.message || null,
             stack: err?.stack,
         });
 
@@ -2661,324 +2776,26 @@ export async function listProductsMini(companyId: number): Promise<ProductMini[]
     return result.recordset;
 }
 
-/* =========================================================
-   DEFINITIVE PURCHASE ENTRIES
-   ========================================================= */
-
-export type PurchaseEntryRow = {
-    id: number;
-    company_id: number;
-    source_import_id: number | null;
-    origin_type: "XML_IMPORT" | "MANUAL" | "PURCHASE_ORDER";
-    purchase_order_id: number | null;
-    supplier_id: number;
-    carrier_id: number | null;
-    carrier_vehicle_id: number | null;
-    access_key: string | null;
-    invoice_number: string | null;
-    invoice_series: string | null;
-    issue_date: string | null;
-    entry_date: string;
-    freight_mode: string | null;
-    products_amount: number;
-    freight_amount: number;
-    insurance_amount: number;
-    other_expenses_amount: number;
-    discount_amount: number;
-    total_amount: number;
-    payment_term_id: number | null;
-    chart_account_id: number | null;
-    cost_center_id: number | null;
-    allocation_method: string;
-    cost_policy: string;
-    price_policy: string;
-    markup_percent: number | null;
-    margin_percent: number | null;
-    accounts_payable_id: number | null;
-    fiscal_document_id: number | null;
-    status: "DRAFT" | "CONFIRMED" | "POSTED" | "CANCELED";
-    notes: string | null;
-    confirmed_at: string | null;
-    confirmed_by_user_id: number | null;
-    created_at: string;
-    updated_at: string | null;
-    supplier_name: string | null;
-    supplier_document: string | null;
-    carrier_name: string | null;
-};
-
-export type PurchaseEntryItemRow = {
-    id: number;
-    purchase_entry_id: number;
-    company_id: number;
-    source_import_item_id: number | null;
-    line_no: number;
-    product_id: number;
-    supplier_code: string | null;
-    ean: string | null;
-    description_snapshot: string;
-    ncm_snapshot: string | null;
-    cest_snapshot: string | null;
-    cfop_snapshot: string | null;
-    uom_snapshot: string | null;
-    quantity: number;
-    unit_price: number;
-    total_price: number;
-    freight_allocated: number;
-    insurance_allocated: number;
-    other_expenses_allocated: number;
-    discount_allocated: number;
-    landed_total_cost: number;
-    landed_unit_cost: number;
-    purchase_order_item_id: number | null;
-    created_at: string;
-    updated_at: string | null;
-    product_name: string | null;
-    sku: string | null;
-};
-
-export type PurchaseEntryDetails = {
-    header: PurchaseEntryRow;
-    items: PurchaseEntryItemRow[];
-};
-
-export async function getDefinitivePurchaseEntryIdByImportId(
-    companyId: number,
-    importId: number,
-): Promise<number | null> {
-    const pool = await getPool();
-
-    const result = await pool
-        .request()
-        .input("company_id", companyId)
-        .input("id", importId)
-        .query<{ definitive_purchase_entry_id: number | null }>(`
-      SELECT TOP 1 definitive_purchase_entry_id
-      FROM dbo.purchase_entry_imports
-      WHERE company_id = @company_id
-        AND id = @id
-    `);
-
-    return result.recordset[0]?.definitive_purchase_entry_id ?? null;
-}
-
-export async function listDefinitiveEntries(
-    companyId: number,
-    query: import("./purchase_entries.schema").PurchaseEntryDefinitiveListQuery,
-) {
-    const pool = await getPool();
-
-    const result = await pool
-        .request()
-        .input("company_id", companyId)
-        .input("status", query.status ?? null)
-        .input("supplier_id", query.supplierId ?? null)
-        .input("date_from", query.from ?? null)
-        .input("date_to", query.to ?? null)
-        .input("q", query.q ? `%${query.q}%` : null)
-        .input("limit", query.limit)
-        .input("offset", query.offset)
-        .query<PurchaseEntryRow>(`
-      SELECT
-        pe.id,
-        pe.company_id,
-        pe.source_import_id,
-        pe.origin_type,
-        pe.purchase_order_id,
-        pe.supplier_id,
-        pe.carrier_id,
-        pe.carrier_vehicle_id,
-        pe.access_key,
-        pe.invoice_number,
-        pe.invoice_series,
-        CONVERT(varchar(23), pe.issue_date, 126) AS issue_date,
-        CONVERT(varchar(23), pe.entry_date, 126) AS entry_date,
-        pe.freight_mode,
-        pe.products_amount,
-        pe.freight_amount,
-        pe.insurance_amount,
-        pe.other_expenses_amount,
-        pe.discount_amount,
-        pe.total_amount,
-        pe.payment_term_id,
-        pe.chart_account_id,
-        pe.cost_center_id,
-        pe.allocation_method,
-        pe.cost_policy,
-        pe.price_policy,
-        pe.markup_percent,
-        pe.margin_percent,
-        pe.accounts_payable_id,
-        pe.fiscal_document_id,
-        pe.status,
-        pe.notes,
-        CONVERT(varchar(23), pe.confirmed_at, 126) AS confirmed_at,
-        pe.confirmed_by_user_id,
-        CONVERT(varchar(23), pe.created_at, 126) AS created_at,
-        CONVERT(varchar(23), pe.updated_at, 126) AS updated_at,
-        s.name AS supplier_name,
-        s.document AS supplier_document,
-        COALESCE(c.trade_name, c.legal_name) AS carrier_name
-      FROM dbo.purchase_entries pe
-      INNER JOIN dbo.suppliers s
-        ON s.id = pe.supplier_id
-       AND s.company_id = pe.company_id
-       AND s.deleted_at IS NULL
-      LEFT JOIN dbo.carriers c
-        ON c.id = pe.carrier_id
-       AND c.company_id = pe.company_id
-      WHERE pe.company_id = @company_id
-        AND (@status IS NULL OR pe.status = @status)
-        AND (@supplier_id IS NULL OR pe.supplier_id = @supplier_id)
-        AND (@date_from IS NULL OR CONVERT(date, pe.entry_date) >= CONVERT(date, @date_from))
-        AND (@date_to IS NULL OR CONVERT(date, pe.entry_date) <= CONVERT(date, @date_to))
-        AND (
-          @q IS NULL
-          OR pe.invoice_number LIKE @q
-          OR pe.access_key LIKE @q
-          OR s.name LIKE @q
-          OR s.document LIKE @q
-        )
-      ORDER BY pe.entry_date DESC, pe.id DESC
-      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
-    `);
-
-    return result.recordset;
-}
-
-export async function getDefinitiveEntryById(
-    companyId: number,
-    id: number,
-): Promise<PurchaseEntryDetails | null> {
-    const pool = await getPool();
-
-    const header = await pool
-        .request()
-        .input("company_id", companyId)
-        .input("id", id)
-        .query<PurchaseEntryRow>(`
-      SELECT
-        pe.id,
-        pe.company_id,
-        pe.source_import_id,
-        pe.origin_type,
-        pe.purchase_order_id,
-        pe.supplier_id,
-        pe.carrier_id,
-        pe.carrier_vehicle_id,
-        pe.access_key,
-        pe.invoice_number,
-        pe.invoice_series,
-        CONVERT(varchar(23), pe.issue_date, 126) AS issue_date,
-        CONVERT(varchar(23), pe.entry_date, 126) AS entry_date,
-        pe.freight_mode,
-        pe.products_amount,
-        pe.freight_amount,
-        pe.insurance_amount,
-        pe.other_expenses_amount,
-        pe.discount_amount,
-        pe.total_amount,
-        pe.payment_term_id,
-        pe.chart_account_id,
-        pe.cost_center_id,
-        pe.allocation_method,
-        pe.cost_policy,
-        pe.price_policy,
-        pe.markup_percent,
-        pe.margin_percent,
-        pe.accounts_payable_id,
-        pe.fiscal_document_id,
-        pe.status,
-        pe.notes,
-        CONVERT(varchar(23), pe.confirmed_at, 126) AS confirmed_at,
-        pe.confirmed_by_user_id,
-        CONVERT(varchar(23), pe.created_at, 126) AS created_at,
-        CONVERT(varchar(23), pe.updated_at, 126) AS updated_at,
-        s.name AS supplier_name,
-        s.document AS supplier_document,
-        COALESCE(c.trade_name, c.legal_name) AS carrier_name
-      FROM dbo.purchase_entries pe
-      INNER JOIN dbo.suppliers s
-        ON s.id = pe.supplier_id
-       AND s.company_id = pe.company_id
-       AND s.deleted_at IS NULL
-      LEFT JOIN dbo.carriers c
-        ON c.id = pe.carrier_id
-       AND c.company_id = pe.company_id
-      WHERE pe.company_id = @company_id
-        AND pe.id = @id
-    `);
-
-    if (!header.recordset[0]) return null;
-
-    const items = await pool
-        .request()
-        .input("company_id", companyId)
-        .input("id", id)
-        .query<PurchaseEntryItemRow>(`
-      SELECT
-        pei.id,
-        pei.purchase_entry_id,
-        pei.company_id,
-        pei.source_import_item_id,
-        pei.line_no,
-        pei.product_id,
-        pei.supplier_code,
-        pei.ean,
-        pei.description_snapshot,
-        pei.ncm_snapshot,
-        pei.cest_snapshot,
-        pei.cfop_snapshot,
-        pei.uom_snapshot,
-        pei.quantity,
-        pei.unit_price,
-        pei.total_price,
-        pei.freight_allocated,
-        pei.insurance_allocated,
-        pei.other_expenses_allocated,
-        pei.discount_allocated,
-        pei.landed_total_cost,
-        pei.landed_unit_cost,
-        pei.purchase_order_item_id,
-        CONVERT(varchar(23), pei.created_at, 126) AS created_at,
-        CONVERT(varchar(23), pei.updated_at, 126) AS updated_at,
-        p.name AS product_name,
-        p.sku
-      FROM dbo.purchase_entry_items pei
-      INNER JOIN dbo.products p
-        ON p.id = pei.product_id
-       AND p.company_id = pei.company_id
-      WHERE pei.company_id = @company_id
-        AND pei.purchase_entry_id = @id
-      ORDER BY pei.line_no
-    `);
-
-    return {
-        header: header.recordset[0],
-        items: items.recordset,
-    };
-}
-
 export async function buildConfirmationPreview(companyId: number, importId: number) {
-  const pool = await getPool();
+    const pool = await getPool();
 
-  const headerResult = await pool
-    .request()
-    .input("importId", sql.BigInt, importId)
-    .input("companyId", sql.Int, companyId)
-    .query<{
-      id: number;
-      company_id: number;
-      products_amount: number;
-      freight_amount: number;
-      insurance_amount: number;
-      other_expenses_amount: number;
-      discount_amount: number;
-      total_amount: number;
-      price_policy: "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
-      markup_percent: number | null;
-      margin_percent: number | null;
-    }>(`
+    const headerResult = await pool
+        .request()
+        .input("importId", sql.BigInt, importId)
+        .input("companyId", sql.Int, companyId)
+        .query<{
+            id: number;
+            company_id: number;
+            products_amount: number;
+            freight_amount: number;
+            insurance_amount: number;
+            other_expenses_amount: number;
+            discount_amount: number;
+            total_amount: number;
+            price_policy: "NONE" | "MARKUP" | "MARGIN" | "SUGGESTED_ONLY";
+            markup_percent: number | null;
+            margin_percent: number | null;
+        }>(`
       SELECT TOP 1
         id,
         company_id,
@@ -2996,30 +2813,30 @@ export async function buildConfirmationPreview(companyId: number, importId: numb
         AND company_id = @companyId
     `);
 
-  const header = headerResult.recordset[0];
+    const header = headerResult.recordset[0];
 
-  if (!header) {
-    throw new Error("Importação não encontrada.");
-  }
+    if (!header) {
+        throw new Error("Importação não encontrada.");
+    }
 
-  const itemsResult = await pool
-    .request()
-    .input("importId", sql.BigInt, importId)
-    .input("companyId", sql.Int, companyId)
-    .query<{
-      id: number;
-      line_no: number;
-      product_id: number | null;
-      quantity: number;
-      unit_price: number;
-      total_price: number;
-      freight_allocated: number;
-      insurance_allocated: number;
-      other_expenses_allocated: number;
-      discount_allocated: number;
-      landed_total_cost: number | null;
-      landed_unit_cost: number | null;
-    }>(`
+    const itemsResult = await pool
+        .request()
+        .input("importId", sql.BigInt, importId)
+        .input("companyId", sql.Int, companyId)
+        .query<{
+            id: number;
+            line_no: number;
+            product_id: number | null;
+            quantity: number;
+            unit_price: number;
+            total_price: number;
+            freight_allocated: number;
+            insurance_allocated: number;
+            other_expenses_allocated: number;
+            discount_allocated: number;
+            landed_total_cost: number | null;
+            landed_unit_cost: number | null;
+        }>(`
       SELECT
         id,
         line_no,
@@ -3039,50 +2856,52 @@ export async function buildConfirmationPreview(companyId: number, importId: numb
       ORDER BY line_no
     `);
 
-  const items = itemsResult.recordset;
+    const items = itemsResult.recordset;
 
-  const previewItems: Array<{
-    importItemId: number;
-    lineNo: number;
-    productId: number | null;
-    productName: string | null;
-    quantity: number;
-    unitPrice: number;
-    landedUnitCost: number;
-    landedTotalCost: number;
-    previousCost: number;
-    newCost: number;
-    previousPrice: number;
-    suggestedPrice: number | null;
-    appliedPrice: number;
-    movedToStock: boolean;
-  }> = [];
+    const previewItems: Array<{
+        importItemId: number;
+        lineNo: number;
+        productId: number | null;
+        productName: string | null;
+        quantity: number;
+        unitPrice: number;
+        landedUnitCost: number;
+        landedTotalCost: number;
+        previousCost: number;
+        newCost: number;
+        previousPrice: number;
+        suggestedPrice: number | null;
+        appliedPrice: number;
+        movedToStock: boolean;
+        currentMarginPercent: number;
+        projectedMarginPercent: number;
+    }> = [];
 
-  for (const item of items) {
-    let product:
-      | {
-          id: number;
-          name: string;
-          cost: number;
-          price: number;
-          track_inventory: boolean;
-          kind: string;
-        }
-      | undefined;
+    for (const item of items) {
+        let product:
+            | {
+                id: number;
+                name: string;
+                cost: number;
+                price: number;
+                track_inventory: boolean;
+                kind: string;
+            }
+            | undefined;
 
-    if (item.product_id) {
-      const productResult = await pool
-        .request()
-        .input("productId", sql.Int, item.product_id)
-        .input("companyId", sql.Int, companyId)
-        .query<{
-          id: number;
-          name: string;
-          cost: number;
-          price: number;
-          track_inventory: boolean;
-          kind: string;
-        }>(`
+        if (item.product_id) {
+            const productResult = await pool
+                .request()
+                .input("productId", sql.Int, item.product_id)
+                .input("companyId", sql.Int, companyId)
+                .query<{
+                    id: number;
+                    name: string;
+                    cost: number;
+                    price: number;
+                    track_inventory: boolean;
+                    kind: string;
+                }>(`
           SELECT TOP 1
             id,
             name,
@@ -3095,92 +2914,100 @@ export async function buildConfirmationPreview(companyId: number, importId: numb
             AND company_id = @companyId
         `);
 
-      product = productResult.recordset[0];
+            product = productResult.recordset[0];
+        }
+
+        const landedTotal =
+            Number(item.total_price ?? 0) +
+            Number(item.freight_allocated ?? 0) +
+            Number(item.insurance_allocated ?? 0) +
+            Number(item.other_expenses_allocated ?? 0) -
+            Number(item.discount_allocated ?? 0);
+
+        const landedUnit = Number(item.quantity ?? 0) > 0 ? landedTotal / Number(item.quantity) : 0;
+
+        const previousCost = Number(product?.cost ?? 0);
+        const previousPrice = Number(product?.price ?? 0);
+
+        let suggestedPrice: number | null = null;
+        let appliedPrice = previousPrice;
+
+        if (header.price_policy === "MARKUP" && header.markup_percent != null) {
+            suggestedPrice = round6(landedUnit * (1 + Number(header.markup_percent) / 100));
+            appliedPrice = suggestedPrice;
+        } else if (header.price_policy === "MARGIN" && header.margin_percent != null) {
+            const divisor = 1 - Number(header.margin_percent) / 100;
+            suggestedPrice = divisor > 0 ? round6(landedUnit / divisor) : null;
+            if (suggestedPrice != null) {
+                appliedPrice = suggestedPrice;
+            }
+        } else if (header.price_policy === "SUGGESTED_ONLY") {
+            suggestedPrice = round6(landedUnit);
+        }
+
+        const currentMarginPercent =
+            previousPrice > 0 ? round6(((previousPrice - previousCost) / previousPrice) * 100) : 0;
+
+        const projectedMarginPercent =
+            appliedPrice > 0 ? round6(((appliedPrice - landedUnit) / appliedPrice) * 100) : 0;
+
+        previewItems.push({
+            importItemId: item.id,
+            lineNo: item.line_no,
+            productId: item.product_id,
+            productName: product?.name ?? null,
+            quantity: Number(item.quantity ?? 0),
+            unitPrice: Number(item.unit_price ?? 0),
+            landedUnitCost: round6(landedUnit),
+            landedTotalCost: round2(landedTotal),
+            previousCost,
+            newCost: round6(landedUnit),
+            previousPrice,
+            suggestedPrice,
+            appliedPrice,
+            currentMarginPercent,
+            projectedMarginPercent,
+            movedToStock:
+                Boolean(product?.track_inventory) &&
+                String(product?.kind ?? "").toUpperCase() === "PRODUCT",
+        });
     }
 
-    const landedTotal =
-      Number(item.total_price ?? 0) +
-      Number(item.freight_allocated ?? 0) +
-      Number(item.insurance_allocated ?? 0) +
-      Number(item.other_expenses_allocated ?? 0) -
-      Number(item.discount_allocated ?? 0);
-
-    const landedUnit =
-      Number(item.quantity ?? 0) > 0 ? landedTotal / Number(item.quantity) : 0;
-
-    let suggestedPrice: number | null = null;
-
-    if (header.price_policy === "MARKUP" && header.markup_percent != null) {
-      suggestedPrice = landedUnit * (1 + Number(header.markup_percent) / 100);
-    }
-
-    if (header.price_policy === "MARGIN" && header.margin_percent != null) {
-      const divisor = 1 - Number(header.margin_percent) / 100;
-      suggestedPrice = divisor > 0 ? landedUnit / divisor : null;
-    }
-
-    if (header.price_policy === "SUGGESTED_ONLY") {
-      suggestedPrice = landedUnit;
-    }
-
-    previewItems.push({
-      importItemId: Number(item.id),
-      lineNo: Number(item.line_no),
-      productId: item.product_id != null ? Number(item.product_id) : null,
-      productName: product?.name ?? null,
-      quantity: Number(item.quantity ?? 0),
-      unitPrice: Number(item.unit_price ?? 0),
-      landedUnitCost: Number(landedUnit.toFixed(6)),
-      landedTotalCost: Number(landedTotal.toFixed(2)),
-      previousCost: Number(product?.cost ?? 0),
-      newCost: Number(landedUnit.toFixed(6)),
-      previousPrice: Number(product?.price ?? 0),
-      suggestedPrice:
-        suggestedPrice != null ? Number(suggestedPrice.toFixed(2)) : null,
-      appliedPrice: Number((suggestedPrice ?? product?.price ?? 0).toFixed(2)),
-      movedToStock: !!(
-        product?.id &&
-        product?.track_inventory &&
-        String(product.kind).toLowerCase() !== "service"
-      ),
-    });
-  }
-
-  return {
-    header: {
-      productsAmount: Number(header.products_amount ?? 0),
-      freightAmount: Number(header.freight_amount ?? 0),
-      insuranceAmount: Number(header.insurance_amount ?? 0),
-      otherExpensesAmount: Number(header.other_expenses_amount ?? 0),
-      discountAmount: Number(header.discount_amount ?? 0),
-      totalAmount: Number(header.total_amount ?? 0),
-    },
-    items: previewItems,
-  };
+    return {
+        header: {
+            productsAmount: Number(header.products_amount ?? 0),
+            freightAmount: Number(header.freight_amount ?? 0),
+            insuranceAmount: Number(header.insurance_amount ?? 0),
+            otherExpensesAmount: Number(header.other_expenses_amount ?? 0),
+            discountAmount: Number(header.discount_amount ?? 0),
+            totalAmount: Number(header.total_amount ?? 0),
+        },
+        items: previewItems,
+    };
 }
 
 export async function updateImportItemManualAllocation(
-  companyId: number,
-  importId: number,
-  itemId: number,
-  payload: {
-    freightAllocated?: number;
-    insuranceAllocated?: number;
-    otherExpensesAllocated?: number;
-    discountAllocated?: number;
-  },
+    companyId: number,
+    importId: number,
+    itemId: number,
+    payload: {
+        freightAllocated?: number;
+        insuranceAllocated?: number;
+        otherExpensesAllocated?: number;
+        discountAllocated?: number;
+    },
 ) {
-  const pool = await getPool();
+    const pool = await getPool();
 
-  const headerResult = await pool
-    .request()
-    .input("importId", sql.BigInt, importId)
-    .input("companyId", sql.Int, companyId)
-    .query<{
-      id: number;
-      allocation_method: "VALUE" | "QUANTITY" | "WEIGHT" | "MANUAL";
-      status: string;
-    }>(`
+    const headerResult = await pool
+        .request()
+        .input("importId", sql.BigInt, importId)
+        .input("companyId", sql.Int, companyId)
+        .query<{
+            id: number;
+            allocation_method: "VALUE" | "QUANTITY" | "WEIGHT" | "MANUAL";
+            status: string;
+        }>(`
       SELECT TOP 1
         id,
         allocation_method,
@@ -3190,30 +3017,30 @@ export async function updateImportItemManualAllocation(
         AND company_id = @companyId
     `);
 
-  const header = headerResult.recordset[0];
+    const header = headerResult.recordset[0];
 
-  if (!header) {
-    throw new Error("Importação não encontrada.");
-  }
+    if (!header) {
+        throw new Error("Importação não encontrada.");
+    }
 
-  if (["CONFIRMED", "CANCELED"].includes(String(header.status))) {
-    throw new Error("Não é possível alterar rateio manual após confirmação/cancelamento.");
-  }
+    if (["CONFIRMED", "CANCELED"].includes(String(header.status))) {
+        throw new Error("Não é possível alterar rateio manual após confirmação/cancelamento.");
+    }
 
-  if (header.allocation_method !== "MANUAL") {
-    throw new Error("Rateio manual não habilitado.");
-  }
+    if (header.allocation_method !== "MANUAL") {
+        throw new Error("Rateio manual não habilitado.");
+    }
 
-  await pool
-    .request()
-    .input("itemId", sql.BigInt, itemId)
-    .input("importId", sql.BigInt, importId)
-    .input("companyId", sql.Int, companyId)
-    .input("freightAllocated", sql.Decimal(18, 2), payload.freightAllocated ?? 0)
-    .input("insuranceAllocated", sql.Decimal(18, 2), payload.insuranceAllocated ?? 0)
-    .input("otherExpensesAllocated", sql.Decimal(18, 2), payload.otherExpensesAllocated ?? 0)
-    .input("discountAllocated", sql.Decimal(18, 2), payload.discountAllocated ?? 0)
-    .query(`
+    await pool
+        .request()
+        .input("itemId", sql.BigInt, itemId)
+        .input("importId", sql.BigInt, importId)
+        .input("companyId", sql.Int, companyId)
+        .input("freightAllocated", sql.Decimal(18, 2), payload.freightAllocated ?? 0)
+        .input("insuranceAllocated", sql.Decimal(18, 2), payload.insuranceAllocated ?? 0)
+        .input("otherExpensesAllocated", sql.Decimal(18, 2), payload.otherExpensesAllocated ?? 0)
+        .input("discountAllocated", sql.Decimal(18, 2), payload.discountAllocated ?? 0)
+        .query(`
       UPDATE dbo.purchase_entry_import_items
       SET
         freight_allocated = @freightAllocated,
@@ -3244,5 +3071,6 @@ export async function updateImportItemManualAllocation(
         AND company_id = @companyId
     `);
 
-  return { success: true };
+    return { success: true };
 }
+
